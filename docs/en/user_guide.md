@@ -22,6 +22,7 @@ This guide provides comprehensive instructions for using X-AnyLabeling, covering
       * [3.4 Crosshair Customization](#34-crosshair-customization)
       * [3.5 Navigator](#35-navigator)
       * [3.6 Compare View](#36-compare-view)
+      * [3.7 Real-ISR Four-Pane Annotation](#37-real-isr-four-pane-annotation)
    * [4. Annotation Formats (Import/Export)](#4-annotation-formats-importexport)
       * [4.1 YOLO Format](#41-yolo-format)
       * [4.2 VOC Format](#42-voc-format)
@@ -235,6 +236,8 @@ Additionally, you can quickly copy the coordinates of any selected shape to your
 
 When drawing a shape on a zoomed canvas with scrollbars, hold `Space` and drag with the left mouse button to temporarily pan the canvas without leaving Drawing Mode.
 
+When the canvas has keyboard focus and an unlocked shape is selected, `Backspace` deletes the selected shape. In label or description text fields, `Backspace` retains its normal character-deletion behavior. Use `Shift+Backspace` to remove a selected polygon point.
+
 > [!TIP]
 > X-AnyLabeling provides two convenient shape navigation features:
 > - **Loop Through Objects** (Ctrl+Shift+N): Sequentially zoom in on each shape in the canvas for detailed inspection of annotation quality.
@@ -392,6 +395,18 @@ X-AnyLabeling provides a Compare View feature that allows you to compare two ima
 5. Click the close button (×) on the slider to exit Compare View.
 
 > **Note:** The comparison image must have the same dimensions as the original image. If the sizes do not match, a warning will be displayed in the status bar.
+
+### 3.7 Real-ISR Four-Pane Annotation
+
+Choose `File` > `Open Real-ISR Dataset` and select a dataset root containing `HR`, `LR2`, `LR3`, and `LR4`. The four directories must contain identical image filenames, with dimensions approximately 1, 1/2, 1/3, and 1/4 of HR.
+
+When PPOCR annotations are imported, the transcription is stored as the shape `description`; the category `label` is `text`.
+
+- The 2×2 workspace displays all variants together. Click a pane to activate it; zooming, scrolling, and panning are synchronized.
+- HR is the only geometry and text master and supports rectangles and quadrilaterals. LR regions are mapped using the actual image dimensions.
+- Select a region and press `0`, `1`, or `2` to assign recoverability. LR canvases display only region masks by default, without `region_id` or text; hold `R` to reveal the text temporarily.
+- Partial work is saved to `annotations/.realisr_draft.json`. After all four variants are complete, confirm the group to write formal JSON under each `annotations/<variant>` directory. A successful commit removes that sample's draft entry and temporary `.pre_realisr.bak` files; a failed commit retains them for recovery.
+- When JSON does not exist, existing `Label.txt` files are imported read-only and are never modified.
 
 ## 4. Annotation Formats (Import/Export)
 
@@ -848,7 +863,8 @@ You can also update shortcuts in the GUI: open Settings with `Ctrl+0`, then edit
 | `Ctrl+z`              | Undo Last Action                                 |                                            |
 | `Delete`              | Delete Selection                                 | Deletes selected shape(s)                  |
 | `Esc`                 | Deselect Object / Cancel Drawing                 |                                            |
-| `Backspace`           | Delete Selected Point (Polygon Edit)             | While editing polygon points (`Ctrl+J`)    |
+| `Backspace`           | Delete Canvas Selection                          | Only when the canvas has keyboard focus    |
+| `Shift+Backspace`     | Delete Selected Point (Polygon Edit)             | While editing polygon points (`Ctrl+J`)    |
 | `↑`, `→`, `↓`, `←`    | Move Selection (Arrow Keys)                      | Nudge selected shape(s)                    |
 | `z`, `x`, `c`, `v`    | Rotate Selection                                 | Rotates selected shape(s) (if applicable)  |
 | `F9`                  | Show/Hide Navigator                              | Toggle navigator window                    |

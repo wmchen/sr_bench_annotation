@@ -194,7 +194,7 @@ shortcuts:
   edit_shapes: Alt+S
   open_settings: Ctrl+0
   toggle_keep_prev_mode: Ctrl+P
-  remove_selected_point: Backspace
+  remove_selected_point: Shift+Backspace
   group_selected_shapes: G
   ungroup_selected_shapes: U
   hide_selected_polygons: S

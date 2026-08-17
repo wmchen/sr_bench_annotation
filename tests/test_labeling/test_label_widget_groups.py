@@ -29,6 +29,7 @@ class TestLabelWidgetGroups(unittest.TestCase):
         )
         widget = SimpleNamespace(
             canvas=canvas,
+            realisr_mode=False,
             tr=lambda text: text,
             remove_labels=Mock(),
             shape_selection_changed=Mock(),

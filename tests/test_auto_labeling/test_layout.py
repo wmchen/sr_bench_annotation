@@ -1,6 +1,7 @@
 import os
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -220,6 +221,57 @@ class TestAutoLabelingLayout(unittest.TestCase):
             [{"type": "auto_grid"}]
         )
         self.assertEqual(widget.run_prediction.call_count, 2)
+
+    def test_extract_shapes_for_recognition_accepts_supported_types(self):
+        shapes = [
+            SimpleNamespace(shape_type=shape_type)
+            for shape_type in (
+                "rectangle",
+                "rotation",
+                "polygon",
+                "quadrilateral",
+            )
+        ]
+        widget = Mock()
+        widget.parent.canvas.shapes = shapes
+
+        extracted = AutoLabelingWidget._extract_shapes_for_recognition(widget)
+
+        self.assertEqual(extracted, shapes)
+        widget.model_manager.new_model_status.emit.assert_not_called()
+
+    def test_extract_shapes_for_recognition_rejects_unsupported_type(self):
+        widget = Mock()
+        widget.parent.canvas.shapes = [SimpleNamespace(shape_type="circle")]
+        widget.tr.side_effect = lambda text: text
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Only rectangle, rotation, polygon and quadrilateral shapes",
+        ):
+            AutoLabelingWidget._extract_shapes_for_recognition(widget)
+
+        widget.model_manager.new_model_status.emit.assert_called_once()
+
+    def test_skip_detection_passes_quadrilateral_to_recognition(self):
+        quadrilateral = SimpleNamespace(shape_type="quadrilateral")
+        widget = Mock()
+        widget.parent.filename = "example.jpg"
+        widget.parent.image = object()
+        widget.parent.canvas.shapes = [quadrilateral]
+        widget.button_skip_detection.isChecked.return_value = True
+        widget.model_manager.loaded_model_config = {"type": "ppocr_v4"}
+        widget._extract_shapes_for_recognition.side_effect = lambda: (
+            AutoLabelingWidget._extract_shapes_for_recognition(widget)
+        )
+
+        AutoLabelingWidget.run_prediction(widget)
+
+        widget.model_manager.predict_shapes_threading.assert_called_once_with(
+            widget.parent.image,
+            widget.parent.filename,
+            existing_shapes=[quadrilateral],
+        )
 
     def test_initial_show_reflows_model_selection_row(self):
         config.current_config_file = (

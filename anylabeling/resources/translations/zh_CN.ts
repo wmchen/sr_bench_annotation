@@ -4995,6 +4995,135 @@ Results have been saved to:
 结果已保存到：
 %s</translation>
     </message>
+    <message>
+      <source>Open Real-ISR Dataset</source>
+      <translation>打开 Real-ISR 数据集</translation>
+    </message>
+    <message>
+      <source>Open a dataset containing HR, LR2, LR3 and LR4 directories</source>
+      <translation>打开包含 HR、LR2、LR3 和 LR4 子目录的数据集</translation>
+    </message>
+    <message>
+      <source>Real-ISR Recoverability</source>
+      <translation>Real-ISR 信息可恢复度</translation>
+    </message>
+    <message>
+      <source>0: sufficient evidence
+1: ambiguous evidence
+2: insufficient evidence / generation required</source>
+      <translation>0：证据充足，可恢复
+1：证据模糊，有歧义
+2：证据不足，需要模型猜测</translation>
+    </message>
+    <message>
+      <source>Confirm current group</source>
+      <translation>确认当前组</translation>
+    </message>
+    <message>
+      <source>Invalid Real-ISR dataset</source>
+      <translation>Real-ISR 数据集无效</translation>
+    </message>
+    <message>
+      <source>Real-ISR: edit text regions in HR; assign 0/1/2 in LR</source>
+      <translation>Real-ISR：在 HR 编辑文本区域，在 LR 填写 0/1/2</translation>
+    </message>
+    <message>
+      <source>; hold R to reveal text</source>
+      <translation>；按住 R 临时显示文字</translation>
+    </message>
+    <message>
+      <source>LR annotation complete</source>
+      <translation>LR 标注已完成</translation>
+    </message>
+    <message>
+      <source>LR2, LR3 and LR4 are complete. You can now confirm the current group.</source>
+      <translation>LR2、LR3 和 LR4 已全部完成，现在可以确认当前组。</translation>
+    </message>
+    <message>
+      <source>Confirm no text</source>
+      <translation>确认无文本</translation>
+    </message>
+    <message>
+      <source>Cannot commit</source>
+      <translation>无法提交</translation>
+    </message>
+    <message>
+      <source>Recoverability monotonicity warning</source>
+      <translation>可恢复度单调性警告</translation>
+    </message>
+    <message>
+      <source>Real-ISR save failed</source>
+      <translation>Real-ISR 保存失败</translation>
+    </message>
+    <message>
+      <source>Select a text region</source>
+      <translation>请选择一个文本区域</translation>
+    </message>
+    <message>
+      <source>%s - Open Real-ISR Dataset</source>
+      <translation>%s - 打开 Real-ISR 数据集</translation>
+    </message>
+    <message>
+      <source>Could not save Real-ISR draft: %s</source>
+      <translation>无法保存 Real-ISR 草稿：%s</translation>
+    </message>
+    <message>
+      <source>%s: %d/%d completed%s</source>
+      <translation>%s：已完成 %d/%d%s</translation>
+    </message>
+    <message>
+      <source>Groups: %d | Images: %d
+Text regions: %d | Completed: %d
+Recoverability: %d/%d | Committed: %d/%d</source>
+      <translation>样本组：%d | 图像：%d
+文本区域：%d | 已完成：%d
+可恢复度：%d/%d | 已提交：%d/%d</translation>
+    </message>
+    <message>
+      <source>Real-ISR draft save failed</source>
+      <translation>Real-ISR 草稿保存失败</translation>
+    </message>
+    <message>
+      <source>The current group was not committed.</source>
+      <translation>当前组尚未提交。</translation>
+    </message>
+    <message>
+      <source>HR has no text regions. Confirm that this image does not contain text requiring annotation?</source>
+      <translation>HR 中没有文本区域。请确认该图像确实不含需要标注的文本。</translation>
+    </message>
+    <message>
+      <source>%s missing %d</source>
+      <translation>%s 缺少 %d 项</translation>
+    </message>
+    <message>
+      <source>Recoverability is incomplete: %s</source>
+      <translation>可恢复度尚未填写完整：%s</translation>
+    </message>
+    <message>
+      <source>These regions do not satisfy HR≤LR2≤LR3≤LR4:
+%s
+
+Commit anyway?</source>
+      <translation>以下区域不满足 HR≤LR2≤LR3≤LR4：
+%s
+
+仍要提交吗？</translation>
+    </message>
+    <message>
+      <source>Committed HR/LR2/LR3/LR4 annotations for %s</source>
+      <translation>已提交 %s 的 HR/LR2/LR3/LR4 标注</translation>
+    </message>
+    <message>
+      <source>Committed annotations, but could not remove obsolete backup(s): %s</source>
+      <translation>标注已提交，但无法删除过期备份：%s</translation>
+    </message>
+  </context>
+  <context>
+    <name>RealISRWorkspace</name>
+    <message>
+      <source>%s · Current annotation view</source>
+      <translation>%s · 当前标注视图</translation>
+    </message>
   </context>
   <context>
     <name>Model</name>

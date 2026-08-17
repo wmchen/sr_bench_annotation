@@ -67,6 +67,7 @@ class Canvas(
     shape_moved = QtCore.pyqtSignal()
     shape_rotated = QtCore.pyqtSignal()
     shapes_deleted = QtCore.pyqtSignal(list)
+    delete_selected_requested = QtCore.pyqtSignal()
     drawing_polygon = QtCore.pyqtSignal(bool)
     vertex_selected = QtCore.pyqtSignal(bool)
     auto_labeling_marks_updated = QtCore.pyqtSignal(list)
@@ -5254,6 +5255,18 @@ class Canvas(
             elif modifiers == QtCore.Qt.KeyboardModifier.AltModifier:
                 self.snapping = False
         elif self.editing():
+            if (
+                key == QtCore.Qt.Key.Key_Backspace
+                and modifiers == QtCore.Qt.KeyboardModifier.NoModifier
+                and not ev.isAutoRepeat()
+                and any(not shape.locked for shape in self.selected_shapes)
+            ):
+                # Backspace is intentionally canvas-local. Text editors keep
+                # their native character-deletion behavior because they own
+                # keyboard focus and never send this event to Canvas.
+                self.delete_selected_requested.emit()
+                ev.accept()
+                return
             if key == QtCore.Qt.Key.Key_Escape:
                 self.deselect_shape()
                 return

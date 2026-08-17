@@ -1812,11 +1812,18 @@ class AutoLabelingWidget(QWidget):
         """Extract shapes for text recognition"""
         shapes_for_recognition = []
         for shape in self.parent.canvas.shapes:
-            if shape.shape_type in ["rectangle", "rotation", "polygon"]:
+            if shape.shape_type in [
+                "rectangle",
+                "rotation",
+                "polygon",
+                "quadrilateral",
+            ]:
                 shapes_for_recognition.append(shape)
             else:
                 error_text = self.tr(
-                    "Existing unsupported shape type. Only rectangle, rotation and polygon shapes are supported for detection boxes."
+                    "Existing unsupported shape type. Only rectangle, "
+                    "rotation, polygon and quadrilateral shapes are supported "
+                    "for detection boxes."
                 )
                 self.model_manager.new_model_status.emit(error_text)
                 raise ValueError(error_text)

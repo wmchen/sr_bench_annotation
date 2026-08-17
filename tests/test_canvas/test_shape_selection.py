@@ -143,6 +143,54 @@ class TestCanvasShapeSelection(unittest.TestCase):
 
         update.assert_called_once_with()
 
+    def test_canvas_backspace_requests_selected_shape_deletion(self):
+        shape = self.make_rectangle("shape", 40, 40, 80, 80)
+        self.canvas.shapes = [shape]
+        self.canvas.selected_shapes = [shape]
+        requests = []
+        self.canvas.delete_selected_requested.connect(
+            lambda: requests.append(True)
+        )
+
+        QtTest.QTest.keyClick(self.canvas, QtCore.Qt.Key.Key_Backspace)
+
+        self.assertEqual(requests, [True])
+        # Canvas only requests deletion; LabelingWidget owns the actual delete
+        # workflow so group confirmations and dirty state remain centralized.
+        self.assertIn(shape, self.canvas.shapes)
+
+    def test_canvas_backspace_ignores_empty_or_locked_selection(self):
+        requests = []
+        self.canvas.delete_selected_requested.connect(
+            lambda: requests.append(True)
+        )
+
+        QtTest.QTest.keyClick(self.canvas, QtCore.Qt.Key.Key_Backspace)
+        locked = self.make_rectangle("locked", 40, 40, 80, 80)
+        locked.locked = True
+        self.canvas.shapes = [locked]
+        self.canvas.selected_shapes = [locked]
+        QtTest.QTest.keyClick(self.canvas, QtCore.Qt.Key.Key_Backspace)
+
+        self.assertEqual(requests, [])
+
+    def test_backspace_in_text_input_only_deletes_text(self):
+        shape = self.make_rectangle("shape", 40, 40, 80, 80)
+        self.canvas.shapes = [shape]
+        self.canvas.selected_shapes = [shape]
+        requests = []
+        self.canvas.delete_selected_requested.connect(
+            lambda: requests.append(True)
+        )
+        text_input = QtWidgets.QLineEdit()
+        text_input.setText("abc")
+        text_input.setCursorPosition(3)
+
+        QtTest.QTest.keyClick(text_input, QtCore.Qt.Key.Key_Backspace)
+
+        self.assertEqual(text_input.text(), "ab")
+        self.assertEqual(requests, [])
+
     def test_vertex_proximity_outweighs_smaller_overlapping_area(self):
         outer = self.make_rectangle("outer", 10, 10, 150, 150)
         overlapping = self.make_rectangle("overlapping", -20, -20, 30, 30)
