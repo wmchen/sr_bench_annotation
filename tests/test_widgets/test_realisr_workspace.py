@@ -133,6 +133,15 @@ class RealISRWorkspaceTest(unittest.TestCase):
             self.assertTrue(canvas.realisr_read_only)
             self.assertTrue(canvas.shapes[0].locked)
 
+    def test_hr_label_overlay_is_hidden_without_changing_label_data(self):
+        hr_canvas = self.workspace.canvases["HR"]
+
+        self.assertFalse(hr_canvas.show_labels)
+        self.assertTrue(hr_canvas.show_texts)
+        self.assertEqual(hr_canvas.shapes[0].label, "text")
+        for variant in ("LR2", "LR3", "LR4"):
+            self.assertTrue(self.workspace.canvases[variant].show_labels)
+
     def test_crosshair_is_visible_only_while_drawing(self):
         for canvas in self.workspace.canvases.values():
             self.assertTrue(canvas.editing())

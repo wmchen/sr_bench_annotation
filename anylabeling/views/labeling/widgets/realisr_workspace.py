@@ -136,6 +136,11 @@ class RealISRWorkspace(QtWidgets.QWidget):
         layout.setSpacing(4)
         for index, variant in enumerate(VARIANTS):
             canvas = RealISRCanvas(parent=parent, **canvas_options)
+            # The HR region label (normally the literal "text") obscures the
+            # source image.  Keep the label data intact, but do not render its
+            # label overlay in the HR pane.  LR labels remain available for
+            # the hold-to-reveal interaction.
+            canvas.show_labels = variant != "HR"
             canvas.activated.connect(
                 functools.partial(self.set_active_variant, variant)
             )
