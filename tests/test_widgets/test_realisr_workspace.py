@@ -133,6 +133,28 @@ class RealISRWorkspaceTest(unittest.TestCase):
             self.assertTrue(canvas.realisr_read_only)
             self.assertTrue(canvas.shapes[0].locked)
 
+    def test_crosshair_is_visible_only_while_drawing(self):
+        for canvas in self.workspace.canvases.values():
+            self.assertTrue(canvas.editing())
+            self.assertFalse(canvas.cross_line_show)
+
+        canvas = self.workspace.canvases["HR"]
+        canvas.set_editing(False)
+        self.assertTrue(canvas.drawing())
+        self.assertTrue(canvas.cross_line_show)
+
+        canvas.set_editing(True)
+        self.assertFalse(canvas.cross_line_show)
+
+    def test_disabled_crosshair_stays_hidden_while_drawing(self):
+        canvas = self.workspace.canvases["HR"]
+        canvas.set_cross_line(False, 2.0, "#00FF00", 0.5)
+
+        canvas.set_editing(False)
+
+        self.assertTrue(canvas.drawing())
+        self.assertFalse(canvas.cross_line_show)
+
     def test_dragging_over_lr_shape_emits_normalized_pan(self):
         canvas = self.workspace.canvases["LR2"]
         requests = []

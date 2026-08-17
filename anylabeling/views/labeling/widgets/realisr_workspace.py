@@ -23,6 +23,22 @@ class RealISRCanvas(Canvas):
         super().__init__(*args, **kwargs)
         self.realisr_read_only = False
         self._realisr_pan_position = None
+        self._realisr_cross_line_enabled = self.cross_line_show
+
+    def set_editing(self, value=True):
+        """Show the crosshair only while drawing in Real-ISR mode."""
+        super().set_editing(value)
+        self.cross_line_show = (
+            self._realisr_cross_line_enabled and self.drawing()
+        )
+        self.update()
+
+    def set_cross_line(self, show, width, color, opacity):
+        """Apply crosshair settings without showing it in edit mode."""
+        self._realisr_cross_line_enabled = show
+        super().set_cross_line(
+            show and self.drawing(), width, color, opacity
+        )
 
     def mousePressEvent(self, event):
         self.activated.emit()
