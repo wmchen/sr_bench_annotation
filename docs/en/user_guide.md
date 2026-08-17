@@ -398,15 +398,15 @@ X-AnyLabeling provides a Compare View feature that allows you to compare two ima
 
 ### 3.7 Real-ISR Four-Pane Annotation
 
-Choose `File` > `Open Real-ISR Dataset` and select a dataset root containing `HR`, `LR2`, `LR3`, and `LR4`. The four directories must contain identical image filenames, with dimensions approximately 1, 1/2, 1/3, and 1/4 of HR.
-
-When PPOCR annotations are imported, the transcription is stored as the shape `description`; the category `label` is `text`.
+Choose `File` > `Open Real-ISR Dataset`, select the `Text` or `Face` attribute, and then select that task's dataset root. Each task uses a separate root containing `HR`, `LR2`, `LR3`, and `LR4`; the four directories must contain identical image filenames, with dimensions approximately 1, 1/2, 1/3, and 1/4 of HR.
 
 - The 2×2 workspace displays all variants together. Click a pane to activate it; zooming, scrolling, and panning are synchronized.
-- HR is the only geometry and text master and supports rectangles and quadrilaterals. LR regions are mapped using the actual image dimensions.
-- Select a region and press `0`, `1`, or `2` to assign recoverability. LR canvases display only region masks by default, without `region_id` or text; hold `R` to reveal the text temporarily.
+- For `Text`, HR is the geometry and text master and supports rectangles and quadrilaterals. The category is `label: "text"`, and OCR truth is stored in `description`.
+- For `Face`, HR supports horizontal rectangles only. New regions use `label: "face"` and an empty `description`; no label or description dialog is shown.
+- LR regions are mapped using the actual image dimensions. Select an LR region and press `0`, `1`, or `2` to assign recoverability. Text regions can temporarily reveal OCR truth by holding `R`; face regions never reveal text.
 - Partial work is saved to `annotations/.realisr_draft.json`. After all four variants are complete, confirm the group to write formal JSON under each `annotations/<variant>` directory. A successful commit removes that sample's draft entry and temporary `.pre_realisr.bak` files; a failed commit retains them for recovery.
-- When JSON does not exist, existing `Label.txt` files are imported read-only and are never modified.
+- The selected attribute is bound in `annotations/RealISRMeta.json`, the draft, and every formal JSON. Opening the same root with another attribute is rejected. Older Real-ISR X-AnyLabeling JSON without an attribute is treated as `Text`.
+- Real-ISR reads only X-AnyLabeling JSON. `Label.txt` files are ignored.
 
 ## 4. Annotation Formats (Import/Export)
 

@@ -5008,6 +5008,38 @@ Results have been saved to:
       <translation>Real-ISR 信息可恢复度</translation>
     </message>
     <message>
+      <source>Real-ISR Recoverability - Text</source>
+      <translation>Real-ISR 信息可恢复度 - 文本</translation>
+    </message>
+    <message>
+      <source>Real-ISR Recoverability - Face</source>
+      <translation>Real-ISR 信息可恢复度 - 人脸</translation>
+    </message>
+    <message>
+      <source>Select Real-ISR Attribute</source>
+      <translation>选择 Real-ISR 属性</translation>
+    </message>
+    <message>
+      <source>Attribute:</source>
+      <translation>属性：</translation>
+    </message>
+    <message>
+      <source>Text</source>
+      <translation>文本</translation>
+    </message>
+    <message>
+      <source>Face</source>
+      <translation>人脸</translation>
+    </message>
+    <message>
+      <source>Text regions</source>
+      <translation>文本区域</translation>
+    </message>
+    <message>
+      <source>Face regions</source>
+      <translation>人脸区域</translation>
+    </message>
+    <message>
       <source>0: sufficient evidence
 1: ambiguous evidence
 2: insufficient evidence / generation required</source>
@@ -5028,6 +5060,10 @@ Results have been saved to:
       <translation>Real-ISR：在 HR 编辑文本区域，在 LR 填写 0/1/2</translation>
     </message>
     <message>
+      <source>Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR</source>
+      <translation>Real-ISR：在 HR 绘制人脸矩形框，在 LR 填写 0/1/2</translation>
+    </message>
+    <message>
       <source>; hold R to reveal text</source>
       <translation>；按住 R 临时显示文字</translation>
     </message>
@@ -5042,6 +5078,10 @@ Results have been saved to:
     <message>
       <source>Confirm no text</source>
       <translation>确认无文本</translation>
+    </message>
+    <message>
+      <source>Confirm no faces</source>
+      <translation>确认无人脸</translation>
     </message>
     <message>
       <source>Cannot commit</source>
@@ -5060,6 +5100,10 @@ Results have been saved to:
       <translation>请选择一个文本区域</translation>
     </message>
     <message>
+      <source>Select a face region</source>
+      <translation>请选择一个人脸区域</translation>
+    </message>
+    <message>
       <source>%s - Open Real-ISR Dataset</source>
       <translation>%s - 打开 Real-ISR 数据集</translation>
     </message>
@@ -5072,11 +5116,13 @@ Results have been saved to:
       <translation>%s：已完成 %d/%d%s</translation>
     </message>
     <message>
-      <source>Groups: %d | Images: %d
-Text regions: %d | Completed: %d
+      <source>Attribute: %s
+Groups: %d | Images: %d
+%s: %d | Completed: %d
 Recoverability: %d/%d | Committed: %d/%d</source>
-      <translation>样本组：%d | 图像：%d
-文本区域：%d | 已完成：%d
+      <translation>属性：%s
+样本组：%d | 图像：%d
+%s：%d | 已完成：%d
 可恢复度：%d/%d | 已提交：%d/%d</translation>
     </message>
     <message>
@@ -5090,6 +5136,10 @@ Recoverability: %d/%d | Committed: %d/%d</source>
     <message>
       <source>HR has no text regions. Confirm that this image does not contain text requiring annotation?</source>
       <translation>HR 中没有文本区域。请确认该图像确实不含需要标注的文本。</translation>
+    </message>
+    <message>
+      <source>HR has no face regions. Confirm that this image does not contain faces requiring annotation?</source>
+      <translation>HR 中没有人脸区域。请确认该图像确实不含需要标注的人脸。</translation>
     </message>
     <message>
       <source>%s missing %d</source>

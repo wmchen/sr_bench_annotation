@@ -1,13 +1,12 @@
 """Data model and persistence for grouped Real-ISR annotations.
 
-The module deliberately has no Qt dependency.  It owns dataset discovery,
-legacy PPOCRLabel import, HR-to-LR geometry synchronization, draft recovery,
-and coordinated X-AnyLabeling JSON commits.
+The module deliberately has no Qt dependency. It owns dataset discovery,
+attribute binding, HR-to-LR geometry synchronization, draft recovery, and
+coordinated X-AnyLabeling JSON commits.
 """
 
 from __future__ import annotations
 
-import ast
 import copy
 import json
 import os
@@ -33,12 +32,15 @@ IMAGE_EXTENSIONS = {
     ".tiff",
     ".webp",
 }
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = (1, 2, SCHEMA_VERSION)
+SUPPORTED_ATTRIBUTES = ("text", "face")
 ANNOTATIONS_DIRNAME = "annotations"
 DRAFT_FILENAME = ".realisr_draft.json"
 METADATA_FILENAME = "RealISRMeta.json"
 BACKUP_SUFFIX = ".pre_realisr.bak"
 DEFAULT_TEXT_LABEL = "text"
+DEFAULT_FACE_LABEL = "face"
 STANDARD_SHAPE_FIELDS = {
     "label",
     "score",
@@ -66,44 +68,6 @@ def _natural_key(value):
         int(part) if part.isdigit() else part.lower()
         for part in re.split(r"(\d+)", value)
     ]
-
-
-def _sample_from_legacy_key(key):
-    return str(key).replace("\\", "/").split("/", 1)[-1]
-
-
-def read_legacy_label_file(path):
-    """Read PPOCRLabel's tab-separated JSON-lines ``Label.txt``."""
-    path = Path(path)
-    if not path.exists():
-        return {}
-    result = {}
-    with path.open("r", encoding="utf-8") as handle:
-        for line_number, raw_line in enumerate(handle, 1):
-            line = raw_line.rstrip("\r\n")
-            if not line:
-                continue
-            try:
-                key, payload = line.split("\t", 1)
-            except ValueError as exc:
-                raise RealISRDatasetError(
-                    f"{path}:{line_number} is not a valid Label.txt row"
-                ) from exc
-            try:
-                value = json.loads(payload)
-            except json.JSONDecodeError:
-                try:
-                    value = ast.literal_eval(payload)
-                except (ValueError, SyntaxError) as exc:
-                    raise RealISRDatasetError(
-                        f"{path}:{line_number} has invalid annotation JSON"
-                    ) from exc
-            if not isinstance(value, list):
-                raise RealISRDatasetError(
-                    f"{path}:{line_number} annotation must be a list"
-                )
-            result[key.replace("\\", "/")] = value
-    return result
 
 
 def _atomic_write(path, payload):
@@ -228,9 +192,14 @@ class RealISRDataset:
 
     variants = VARIANTS
 
-    def __init__(self, root):
+    def __init__(self, root, attribute):
+        if attribute not in SUPPORTED_ATTRIBUTES:
+            raise RealISRDatasetError(
+                f"Unsupported Real-ISR attribute: {attribute}"
+            )
         self.root = Path(root).expanduser().resolve()
         self.annotation_root = self.root / ANNOTATIONS_DIRNAME
+        self.attribute = attribute
         self.samples = []
         self.dimensions = {}
         self.formal = {variant: {} for variant in VARIANTS}
@@ -239,10 +208,47 @@ class RealISRDataset:
         self.drafts = {}
         self.backup_cleanup_failures = []
         self._discover()
+        self._validate_attribute_binding()
         self._load_sources()
         self._initialize_records()
         self._load_draft()
         self._remove_stale_committed_backups()
+        self.bind_attribute()
+
+    def _validate_attribute_binding(self):
+        path = self.annotation_root / METADATA_FILENAME
+        if not path.exists():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RealISRDatasetError(
+                f"Invalid Real-ISR metadata: {path}"
+            ) from exc
+        if not isinstance(payload, dict) or payload.get(
+            "schema_version"
+        ) not in SUPPORTED_SCHEMA_VERSIONS:
+            raise RealISRDatasetError(
+                f"Unsupported Real-ISR metadata schema: {path}"
+            )
+        stored_attribute = payload.get("attribute", "text")
+        if stored_attribute not in SUPPORTED_ATTRIBUTES:
+            raise RealISRDatasetError(
+                f"Unsupported Real-ISR attribute in {path}: "
+                f"{stored_attribute}"
+            )
+        if stored_attribute != self.attribute:
+            raise RealISRDatasetError(
+                f"Real-ISR dataset is bound to attribute "
+                f"'{stored_attribute}', not '{self.attribute}'"
+            )
+
+    def bind_attribute(self):
+        """Persist the selected attribute after a successful validation."""
+        _atomic_write(
+            self.annotation_root / METADATA_FILENAME,
+            _json_bytes(self._metadata()),
+        )
 
     def _discover(self):
         errors = []
@@ -322,19 +328,73 @@ class RealISRDataset:
         if transcription is not None:
             if not record.get("description"):
                 record["description"] = transcription
-            record["label"] = record.get("label") or DEFAULT_TEXT_LABEL
         elif (
             migrate_misplaced_label
             and not record.get("description")
-            and record.get("label") not in (None, "")
+            and record.get("label") not in (
+                None,
+                "",
+                DEFAULT_TEXT_LABEL,
+            )
         ):
             # Compatibility with Real-ISR JSON/drafts produced before OCR
             # text was stored in ``description``.
             record["description"] = record["label"]
-            record["label"] = DEFAULT_TEXT_LABEL
         else:
             record.setdefault("description", "")
-            record["label"] = record.get("label") or DEFAULT_TEXT_LABEL
+        record["label"] = DEFAULT_TEXT_LABEL
+        return record
+
+    @staticmethod
+    def _is_horizontal_rectangle(points):
+        if len(points) == 2:
+            return points[0][0] != points[1][0] and points[0][1] != points[1][1]
+        if len(points) != 4:
+            return False
+        coordinates = {(float(point[0]), float(point[1])) for point in points}
+        xs = {point[0] for point in coordinates}
+        ys = {point[1] for point in coordinates}
+        return len(coordinates) == 4 and len(xs) == 2 and len(ys) == 2
+
+    def _normalize_record(
+        self,
+        record,
+        *,
+        migrate_misplaced_label=False,
+        strict=False,
+        path=None,
+    ):
+        if self.attribute == "text":
+            return self._normalize_text_fields(
+                record,
+                migrate_misplaced_label=migrate_misplaced_label,
+            )
+
+        location = str(path) if path is not None else "face annotation"
+        label = record.get("label")
+        description = record.get("description")
+        shape_type = record.get("shape_type")
+        points = record.get("points", [])
+        if strict and label not in (None, "", DEFAULT_FACE_LABEL):
+            raise RealISRDatasetError(
+                f"{location} contains a non-face label: {label}"
+            )
+        if strict and description not in (None, ""):
+            raise RealISRDatasetError(
+                f"{location} contains a non-empty face description"
+            )
+        if shape_type not in (None, "rectangle"):
+            raise RealISRDatasetError(
+                f"{location} contains a non-rectangle face region"
+            )
+        if strict and not self._is_horizontal_rectangle(points):
+            raise RealISRDatasetError(
+                f"{location} contains a non-horizontal face rectangle"
+            )
+        record.pop("transcription", None)
+        record["label"] = DEFAULT_FACE_LABEL
+        record["description"] = ""
+        record["shape_type"] = "rectangle"
         return record
 
     def _load_json_records(self, variant, sample):
@@ -357,64 +417,38 @@ class RealISRDataset:
         realisr_schema_version = (
             realisr_metadata.get("schema_version", 1)
             if is_realisr_document
-            else SCHEMA_VERSION
+            else 2
         )
-        if realisr_schema_version not in (1, SCHEMA_VERSION):
+        if realisr_schema_version not in SUPPORTED_SCHEMA_VERSIONS:
             raise RealISRDatasetError(
                 f"Unsupported Real-ISR JSON schema version: {path}"
             )
+        document_attribute = (
+            realisr_metadata.get("attribute", "text")
+            if is_realisr_document
+            else "text"
+        )
+        if document_attribute != self.attribute:
+            raise RealISRDatasetError(
+                f"{path} is bound to attribute '{document_attribute}', "
+                f"not '{self.attribute}'"
+            )
         needs_text_field_migration = realisr_schema_version == 1
         records = copy.deepcopy(payload["shapes"])
-        if is_realisr_document:
-            records = [
-                self._normalize_text_fields(
-                    record,
-                    migrate_misplaced_label=needs_text_field_migration,
-                )
-                if isinstance(record, dict)
-                else record
-                for record in records
-            ]
+        records = [
+            self._normalize_record(
+                record,
+                migrate_misplaced_label=needs_text_field_migration,
+                strict=True,
+                path=path,
+            )
+            if isinstance(record, dict)
+            else record
+            for record in records
+        ]
         return records
 
-    @staticmethod
-    def _legacy_records(records):
-        converted = []
-        for source in records:
-            if not isinstance(source, dict):
-                converted.append(source)
-                continue
-            record = copy.deepcopy(source)
-            record = RealISRDataset._normalize_text_fields(record)
-            record.setdefault("shape_type", "quadrilateral")
-            record.setdefault("score", None)
-            record.setdefault("group_id", None)
-            record.setdefault("flags", {})
-            record.setdefault("attributes", {})
-            record.setdefault("kie_linking", [])
-            converted.append(record)
-        return converted
-
     def _load_sources(self):
-        legacy = {}
-        for variant in VARIANTS:
-            legacy[variant] = {}
-            raw = read_legacy_label_file(
-                self.root / variant / "Label.txt"
-            )
-            for key, records in raw.items():
-                sample = _sample_from_legacy_key(key)
-                if sample not in self.samples:
-                    raise RealISRDatasetError(
-                        f"{variant}/Label.txt references unknown image: {key}"
-                    )
-                prefix = key.replace("\\", "/").split("/", 1)[0]
-                if prefix != variant:
-                    raise RealISRDatasetError(
-                        f"{variant}/Label.txt contains a mismatched key: {key}"
-                    )
-                legacy[variant][sample] = self._legacy_records(records)
-
         for sample in self.samples:
             existing = {
                 variant: self._json_path(variant, sample).exists()
@@ -436,7 +470,7 @@ class RealISRDataset:
                 if count == len(VARIANTS):
                     records = self._load_json_records(variant, sample)
                 else:
-                    records = legacy[variant].get(sample, [])
+                    records = []
                 if records or count == len(VARIANTS):
                     self.formal[variant][sample] = records
             if count == len(VARIANTS):
@@ -467,7 +501,7 @@ class RealISRDataset:
                     f"HR/{sample} contains a non-object region"
                 )
             record = copy.deepcopy(source_record)
-            record = self._normalize_text_fields(record)
+            record = self._normalize_record(record)
             region_id = record.get("region_id")
             if not region_id or region_id in used:
                 region_id = self._new_region_id(sample, used)
@@ -477,10 +511,17 @@ class RealISRDataset:
             record["recoverable"] = value if value in (0, 1, 2) else 0
             record.setdefault("points", [])
             record["points"] = [list(point) for point in record["points"]]
-            record.setdefault(
-                "shape_type",
-                "quadrilateral" if len(record["points"]) == 4 else "polygon",
-            )
+            if self.attribute == "text":
+                record.setdefault(
+                    "shape_type",
+                    "quadrilateral"
+                    if len(record["points"]) == 4
+                    else "polygon",
+                )
+            elif not self._is_horizontal_rectangle(record["points"]):
+                raise RealISRDatasetError(
+                    f"HR/{sample} contains a non-horizontal face rectangle"
+                )
             record.setdefault("score", None)
             record.setdefault("group_id", None)
             record.setdefault("difficult", False)
@@ -512,14 +553,18 @@ class RealISRDataset:
                     raise RealISRDatasetError(
                         f"{variant}/{sample} region_id set does not match HR"
                     )
-            elif len(existing) == len(master) and all(
-                isinstance(record, dict)
-                and (
-                    record.get("description")
-                    or record.get("transcription", "")
+            elif (
+                self.attribute == "text"
+                and len(existing) == len(master)
+                and all(
+                    isinstance(record, dict)
+                    and (
+                        record.get("description")
+                        or record.get("transcription", "")
+                    )
+                    == master[index].get("description", "")
+                    for index, record in enumerate(existing)
                 )
-                == master[index].get("description", "")
-                for index, record in enumerate(existing)
             ):
                 by_id = {
                     master[index]["region_id"]: record
@@ -586,7 +631,7 @@ class RealISRDataset:
             raise RealISRDatasetError(f"Invalid Real-ISR draft: {path}") from exc
         if (
             not isinstance(payload, dict)
-            or payload.get("schema_version") not in (1, SCHEMA_VERSION)
+            or payload.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS
         ):
             raise RealISRDatasetError(
                 "Unsupported Real-ISR draft schema version"
@@ -596,17 +641,23 @@ class RealISRDataset:
             raise RealISRDatasetError(
                 "Real-ISR draft samples must be an object"
             )
-        needs_text_field_migration = (
-            payload.get("schema_version") < SCHEMA_VERSION
-        )
+        draft_attribute = payload.get("attribute", "text")
+        if draft_attribute != self.attribute:
+            raise RealISRDatasetError(
+                f"Real-ISR draft is bound to attribute "
+                f"'{draft_attribute}', not '{self.attribute}'"
+            )
+        needs_text_field_migration = payload.get("schema_version") == 1
         for sample, group in draft_samples.items():
             if sample not in self.records or not isinstance(group, dict):
                 continue
             hr_source = group.get("HR", self.records[sample]["HR"])
             hr_source = [
-                self._normalize_text_fields(
+                self._normalize_record(
                     copy.deepcopy(record),
                     migrate_misplaced_label=needs_text_field_migration,
+                    strict=True,
+                    path=path,
                 )
                 if isinstance(record, dict)
                 else record
@@ -615,8 +666,20 @@ class RealISRDataset:
             hr = self._normalize_hr(sample, hr_source)
             restored = {"HR": hr}
             for variant in VARIANTS[1:]:
+                variant_source = group.get(variant, [])
+                if self.attribute == "face":
+                    variant_source = [
+                        self._normalize_record(
+                            copy.deepcopy(record),
+                            strict=True,
+                            path=path,
+                        )
+                        if isinstance(record, dict)
+                        else record
+                        for record in variant_source
+                    ]
                 restored[variant] = self._synchronize_variant(
-                    sample, variant, hr, group.get(variant, [])
+                    sample, variant, hr, variant_source
                 )
             self.records[sample] = restored
             self.drafts[sample] = copy.deepcopy(restored)
@@ -655,7 +718,12 @@ class RealISRDataset:
                 "recoverable", previous.get("recoverable", 0)
             )
             record["recoverable"] = value if value in (0, 1, 2) else 0
-            record.setdefault("label", "")
+            record.setdefault(
+                "label",
+                DEFAULT_FACE_LABEL
+                if self.attribute == "face"
+                else DEFAULT_TEXT_LABEL,
+            )
             record.setdefault("points", [])
             record.setdefault("difficult", previous.get("difficult", False))
             normalized.append(record)
@@ -741,13 +809,13 @@ class RealISRDataset:
         return True
 
     def dashboard_stats(self):
-        text_instances = 0
+        instances = 0
         completed_instances = 0
         assigned = 0
         total = 0
         for sample in self.samples:
             group = self.records[sample]
-            text_instances += len(group["HR"])
+            instances += len(group["HR"])
             lr_values = {
                 variant: {
                     record["region_id"]: record.get("recoverable")
@@ -771,7 +839,7 @@ class RealISRDataset:
         return {
             "sample_groups": len(self.samples),
             "image_files": len(self.samples) * len(VARIANTS),
-            "text_instances": text_instances,
+            "instances": instances,
             "completed_instances": completed_instances,
             "recoverability_assigned": assigned,
             "recoverability_total": total,
@@ -785,6 +853,7 @@ class RealISRDataset:
         return {
             "schema_version": SCHEMA_VERSION,
             "format": "x-anylabeling-json",
+            "attribute": self.attribute,
             "master": "HR",
             "variants": list(VARIANTS),
             "recoverable": {
@@ -796,10 +865,7 @@ class RealISRDataset:
         }
 
     def save_draft(self):
-        _atomic_write(
-            self.annotation_root / METADATA_FILENAME,
-            _json_bytes(self._metadata()),
-        )
+        self.bind_attribute()
         path = self.annotation_root / DRAFT_FILENAME
         if not self.drafts:
             if path.exists():
@@ -808,7 +874,11 @@ class RealISRDataset:
         _atomic_write(
             path,
             _json_bytes(
-                {"schema_version": SCHEMA_VERSION, "samples": self.drafts}
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "attribute": self.attribute,
+                    "samples": self.drafts,
+                }
             ),
         )
 
@@ -825,6 +895,7 @@ class RealISRDataset:
             "imageWidth": width,
             "realisr": {
                 "schema_version": SCHEMA_VERSION,
+                "attribute": self.attribute,
                 "variant": variant,
                 "master": "HR",
             },

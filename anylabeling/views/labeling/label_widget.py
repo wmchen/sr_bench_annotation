@@ -58,6 +58,7 @@ from ...config import get_config, save_config
 from .label_file import LabelFile, LabelFileError
 from .logger import logger
 from .realisr_dataset import (
+    DEFAULT_FACE_LABEL,
     RealISRDataset,
     RealISRDatasetError,
     VARIANTS as REALISR_VARIANTS,
@@ -240,6 +241,7 @@ class LabelingWidget(LabelDialog):
         self.realisr_sample = None
         self.realisr_variant = "HR"
         self.realisr_reveal_text = False
+        self._realisr_description_was_visible = None
         self._realisr_loading = False
         self._realisr_empty_confirmed = set()
         self._realisr_completion_notified = set()
@@ -2608,9 +2610,9 @@ class LabelingWidget(LabelDialog):
         realisr_panel_layout = QVBoxLayout(self.realisr_panel)
         realisr_panel_layout.setContentsMargins(6, 6, 6, 6)
         realisr_panel_layout.setSpacing(6)
-        realisr_title = QLabel(self.tr("Real-ISR Recoverability"))
-        realisr_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        realisr_panel_layout.addWidget(realisr_title)
+        self.realisr_title = QLabel(self.tr("Real-ISR Recoverability"))
+        self.realisr_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        realisr_panel_layout.addWidget(self.realisr_title)
         self.realisr_help = QLabel(
             self.tr(
                 "0: sufficient evidence\n"
@@ -3092,7 +3094,8 @@ class LabelingWidget(LabelDialog):
             )
             dirty_marker = "*" if self.dirty else ""
             return (
-                f"{title} Real-ISR [{self.realisr_variant}] - "
+                f"{title} Real-ISR [{self.realisr_dataset.attribute}] "
+                f"[{self.realisr_variant}] - "
                 f"{self.realisr_sample}{dirty_marker} "
                 f"[{current_index + 1}/{len(self.realisr_dataset.samples)}]"
             )
@@ -3789,11 +3792,14 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode:
             if self.realisr_variant != "HR":
                 return
-            if not edit and create_mode not in (
-                "rectangle",
-                "quadrilateral",
-            ):
-                return
+            if not edit:
+                allowed_modes = (
+                    ("rectangle",)
+                    if self.realisr_dataset.attribute == "face"
+                    else ("rectangle", "quadrilateral")
+                )
+                if create_mode not in allowed_modes:
+                    return
         if not preserve_brush_mode:
             if getattr(self.canvas, "is_brush_mode", False):
                 self.canvas.cancel_brush_mode()
@@ -4323,7 +4329,10 @@ class LabelingWidget(LabelDialog):
         self._refresh_shape_filters()
 
     def edit_label(self, item=None):
-        if self.realisr_mode and self.realisr_variant != "HR":
+        if self.realisr_mode and (
+            self.realisr_variant != "HR"
+            or self.realisr_dataset.attribute == "face"
+        ):
             return
         if item and not isinstance(item, LabelListWidgetItem):
             raise TypeError("item must be LabelListWidgetItem type")
@@ -5436,6 +5445,28 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode and self.realisr_variant != "HR":
             self.canvas.undo_last_line()
             return
+        if (
+            self.realisr_mode
+            and self.realisr_dataset.attribute == "face"
+        ):
+            if self.canvas.shapes[-1].shape_type != "rectangle":
+                self.canvas.undo_last_line()
+                return
+            self.label_list.clearSelection()
+            shape = self.canvas.set_last_label(DEFAULT_FACE_LABEL, {}, None)
+            shape.label = DEFAULT_FACE_LABEL
+            shape.description = ""
+            shape.group_id = None
+            shape.difficult = False
+            shape.kie_linking = []
+            shape.other_data["recoverable"] = 0
+            self.add_label(shape)
+            self.apply_realisr_shape_color(shape)
+            self.actions.edit_mode.setEnabled(True)
+            self.actions.undo_last_point.setEnabled(False)
+            self.actions.undo.setEnabled(True)
+            self.set_dirty()
+            return
         items = self.unique_label_list.selectedItems()
         text = None
         if items:
@@ -6282,6 +6313,7 @@ class LabelingWidget(LabelDialog):
                 return
             if (
                 self.realisr_variant != "HR"
+                and self.realisr_dataset.attribute == "text"
                 and event.key() == Qt.Key.Key_R
                 and not event.isAutoRepeat()
             ):
@@ -6301,6 +6333,7 @@ class LabelingWidget(LabelDialog):
     def keyReleaseEvent(self, event):
         if (
             self.realisr_mode
+            and self.realisr_dataset.attribute == "text"
             and event.key() == Qt.Key.Key_R
             and not event.isAutoRepeat()
         ):
@@ -6948,9 +6981,26 @@ class LabelingWidget(LabelDialog):
         self.set_dirty()
 
     # Real-ISR grouped annotation -------------------------------------------------
-    def open_realisr_folder_dialog(self, _value=False, dirpath=None):
+    def open_realisr_folder_dialog(
+        self, _value=False, dirpath=None, attribute=None
+    ):
         if not self.may_continue():
             return
+        if attribute is None:
+            display_attributes = [self.tr("Text"), self.tr("Face")]
+            selected, accepted = QtWidgets.QInputDialog.getItem(
+                self,
+                self.tr("Select Real-ISR Attribute"),
+                self.tr("Attribute:"),
+                display_attributes,
+                0,
+                False,
+            )
+            if not accepted:
+                return
+            attribute = (
+                "text" if selected == display_attributes[0] else "face"
+            )
         default_path = dirpath or self.settings.value(
             "last_realisr_dir", "."
         )
@@ -6965,7 +7015,7 @@ class LabelingWidget(LabelDialog):
         if not dirpath:
             return
         try:
-            dataset = RealISRDataset(str(dirpath))
+            dataset = RealISRDataset(str(dirpath), attribute)
         except (OSError, RealISRDatasetError) as exc:
             self.error_message(
                 self.tr("Invalid Real-ISR dataset"),
@@ -6993,15 +7043,37 @@ class LabelingWidget(LabelDialog):
         self._normal_scroll_area.hide()
         self.realisr_workspace.show()
         self.realisr_panel.show()
+        self.realisr_title.setText(
+            self.tr("Real-ISR Recoverability - Face")
+            if dataset.attribute == "face"
+            else self.tr("Real-ISR Recoverability - Text")
+        )
+        if dataset.attribute == "face":
+            self._realisr_description_was_visible = (
+                self.description_dock.isVisible()
+            )
+            self.description_dock.hide()
+        else:
+            self._realisr_description_was_visible = None
         self.auto_labeling_widget.hide()
         self.compare_view_slider.hide()
         self.canvas_adjustment.hide()
         self.thumbnail_container.hide()
         self.file_search.setEnabled(False)
-        self.label_instruction.setText(
+        instruction = (
             self.tr(
+                "Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR"
+            )
+            if dataset.attribute == "face"
+            else self.tr(
                 "Real-ISR: edit text regions in HR; assign 0/1/2 in LR"
             )
+        )
+        self.label_instruction.setText(instruction)
+        self.realisr_progress.setText(
+            self.tr("Select a face region")
+            if dataset.attribute == "face"
+            else self.tr("Select a text region")
         )
 
         self.file_list_widget.blockSignals(True)
@@ -7026,6 +7098,9 @@ class LabelingWidget(LabelDialog):
             self.realisr_workspace.clear()
             self.realisr_workspace.hide()
             self.realisr_panel.hide()
+            if self._realisr_description_was_visible:
+                self.description_dock.show()
+            self._realisr_description_was_visible = None
             self._normal_scroll_area.show()
             self.canvas = self._normal_canvas
             self._normal_canvas.reset_state()
@@ -7078,9 +7153,10 @@ class LabelingWidget(LabelDialog):
         shape.other_data["region_id"] = record.get("region_id")
         shape.other_data["recoverable"] = record.get("recoverable")
         if variant != "HR":
-            shape.other_data["realisr_text"] = record.get(
-                "description", ""
-            )
+            if self.realisr_dataset.attribute == "text":
+                shape.other_data["realisr_text"] = record.get(
+                    "description", ""
+                )
             # Keep LR canvases visually unobstructed. The source text is
             # revealed temporarily through ``shape.label`` while R is held;
             # the persistent description must also be cleared because Canvas
@@ -7137,6 +7213,10 @@ class LabelingWidget(LabelDialog):
         try:
             self.realisr_sample = sample
             self.realisr_workspace.load_group(pixmaps, shapes)
+            if self.realisr_dataset.attribute == "face":
+                self.realisr_workspace.canvases[
+                    "HR"
+                ].create_mode = "rectangle"
             self.file_list_widget.blockSignals(True)
             self.file_list_widget.setCurrentRow(
                 self.realisr_dataset.samples.index(sample)
@@ -7424,6 +7504,9 @@ class LabelingWidget(LabelDialog):
     def refresh_realisr_label_display(self):
         if not self.realisr_mode:
             return
+        if self.realisr_dataset.attribute != "text":
+            self.realisr_reveal_text = False
+            return
         self.realisr_workspace.set_lr_text_revealed(
             self.realisr_reveal_text
         )
@@ -7439,7 +7522,11 @@ class LabelingWidget(LabelDialog):
                 )
 
     def set_realisr_text_revealed(self, revealed):
-        if not self.realisr_mode or self.realisr_variant == "HR":
+        if (
+            not self.realisr_mode
+            or self.realisr_variant == "HR"
+            or self.realisr_dataset.attribute != "text"
+        ):
             return
         self.realisr_reveal_text = bool(revealed)
         self.refresh_realisr_label_display()
@@ -7457,6 +7544,7 @@ class LabelingWidget(LabelDialog):
         hint = (
             self.tr("; hold R to reveal text")
             if self.realisr_variant != "HR"
+            and self.realisr_dataset.attribute == "text"
             else ""
         )
         self.realisr_progress.setText(
@@ -7478,16 +7566,29 @@ class LabelingWidget(LabelDialog):
         self.realisr_recoverability_group.setExclusive(True)
 
         stats = self.realisr_dataset.dashboard_stats()
+        attribute_name = (
+            self.tr("Text")
+            if self.realisr_dataset.attribute == "text"
+            else self.tr("Face")
+        )
+        region_name = (
+            self.tr("Text regions")
+            if self.realisr_dataset.attribute == "text"
+            else self.tr("Face regions")
+        )
         self.realisr_dashboard.setText(
             self.tr(
+                "Attribute: %s\n"
                 "Groups: %d | Images: %d\n"
-                "Text regions: %d | Completed: %d\n"
+                "%s: %d | Completed: %d\n"
                 "Recoverability: %d/%d | Committed: %d/%d"
             )
             % (
+                attribute_name,
                 stats["sample_groups"],
                 stats["image_files"],
-                stats["text_instances"],
+                region_name,
+                stats["instances"],
                 stats["completed_instances"],
                 stats["recoverability_assigned"],
                 stats["recoverability_total"],
@@ -7532,10 +7633,11 @@ class LabelingWidget(LabelDialog):
         if not self.realisr_mode:
             return
         editable = self.realisr_variant == "HR"
+        is_face = self.realisr_dataset.attribute == "face"
         selected = len(self.canvas.selected_shapes) > 0
-        enabled_only_hr = (
-            self.actions.create_rectangle_mode,
-            self.actions.create_quadrilateral_mode,
+        self.actions.create_rectangle_mode.setEnabled(editable)
+        self.actions.create_quadrilateral_mode.setEnabled(
+            editable and not is_face
         )
         disabled_tools = (
             self.actions.create_mode,
@@ -7549,12 +7651,10 @@ class LabelingWidget(LabelDialog):
             self.actions.create_line_strip_mode,
             self.actions.edit_brush_mode,
         )
-        for action in enabled_only_hr:
-            action.setEnabled(editable)
         for action in disabled_tools:
             action.setEnabled(False)
         self.actions.edit_mode.setEnabled(editable)
-        self.actions.edit.setEnabled(editable and selected)
+        self.actions.edit.setEnabled(editable and selected and not is_face)
         self.actions.delete.setEnabled(editable and selected)
         self.actions.duplicate.setEnabled(editable and selected)
         self.actions.copy.setEnabled(editable and selected)
@@ -7572,7 +7672,7 @@ class LabelingWidget(LabelDialog):
         self.actions.run_all_images.setEnabled(False)
         self.actions.toggle_auto_labeling_widget.setEnabled(False)
         self.actions.shape_manager.setEnabled(False)
-        self.shape_text_edit.setDisabled(not editable)
+        self.shape_text_edit.setDisabled(not editable or is_face)
         for action in self.actions.zoom_actions:
             action.setEnabled(False)
         for index in range(10):
@@ -7594,10 +7694,18 @@ class LabelingWidget(LabelDialog):
             not records
             and self.realisr_sample not in self._realisr_empty_confirmed
         ):
+            is_face = self.realisr_dataset.attribute == "face"
             answer = QMessageBox.question(
                 self,
-                self.tr("Confirm no text"),
+                self.tr("Confirm no faces")
+                if is_face
+                else self.tr("Confirm no text"),
                 self.tr(
+                    "HR has no face regions. Confirm that this image does "
+                    "not contain faces requiring annotation?"
+                )
+                if is_face
+                else self.tr(
                     "HR has no text regions. Confirm that this image does "
                     "not contain text requiring annotation?"
                 ),
@@ -8140,6 +8248,11 @@ class LabelingWidget(LabelDialog):
             self.set_dirty()
 
     def shape_text_changed(self):
+        if (
+            self.realisr_mode
+            and self.realisr_dataset.attribute == "face"
+        ):
+            return
         description = self.shape_text_edit.toPlainText()
         if self.canvas.current is not None:
             self.canvas.current.description = description
@@ -8151,6 +8264,11 @@ class LabelingWidget(LabelDialog):
 
     def set_text_editing(self, enable):
         """Set text editing."""
+        if (
+            self.realisr_mode
+            and self.realisr_dataset.attribute == "face"
+        ):
+            enable = False
         if enable:
             # Enable text editing and set shape text from selected shape
             if len(self.canvas.selected_shapes) == 1:
