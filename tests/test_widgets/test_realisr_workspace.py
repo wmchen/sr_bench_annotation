@@ -44,6 +44,14 @@ class RealISRWorkspaceTest(unittest.TestCase):
         self.workspace.resize(800, 600)
         self.workspace.show()
 
+        pixmaps, shapes = self.make_group("000001.png#0000")
+        self.workspace.load_group(pixmaps, shapes)
+        self.app.processEvents()
+        self.workspace.fit_canvases()
+        self.app.processEvents()
+
+    @staticmethod
+    def make_group(region_id, include_shapes=True):
         sizes = {
             "HR": (400, 240),
             "LR2": (200, 120),
@@ -56,6 +64,9 @@ class RealISRWorkspaceTest(unittest.TestCase):
             pixmap = QtGui.QPixmap(width, height)
             pixmap.fill(QtGui.QColor("white"))
             pixmaps[variant] = pixmap
+            if not include_shapes:
+                shapes[variant] = []
+                continue
             shape = Shape(
                 label="text",
                 description="truth",
@@ -69,7 +80,7 @@ class RealISRWorkspaceTest(unittest.TestCase):
             ]
             shape.close()
             shape.other_data = {
-                "region_id": "000001.png#0000",
+                "region_id": region_id,
                 "recoverable": None if variant != "HR" else 0,
                 "realisr_text": shape.description,
             }
@@ -78,10 +89,7 @@ class RealISRWorkspaceTest(unittest.TestCase):
                 shape.description = ""
                 shape.locked = True
             shapes[variant] = [shape]
-        self.workspace.load_group(pixmaps, shapes)
-        self.app.processEvents()
-        self.workspace.fit_canvases()
-        self.app.processEvents()
+        return pixmaps, shapes
 
     def tearDown(self):
         self.workspace.close()
@@ -148,6 +156,61 @@ class RealISRWorkspaceTest(unittest.TestCase):
         canvas.mouseMoveEvent(MoveEvent())
         self.assertEqual(len(requests), 2)
         self.assertTrue(all(request[2] == 1 for request in requests))
+
+    def test_loading_group_isolates_undo_history_for_every_canvas(self):
+        pixmaps, shapes = self.make_group("000002.png#0000")
+        self.workspace.load_group(pixmaps, shapes)
+
+        for canvas in self.workspace.canvases.values():
+            self.assertEqual(len(canvas.shapes_backups), 1)
+            self.assertFalse(canvas.is_shape_restorable)
+            self.assertEqual(
+                [shape.other_data["region_id"] for shape in canvas.shapes],
+                ["000002.png#0000"],
+            )
+
+            canvas.restore_shape()
+            self.assertEqual(
+                [shape.other_data["region_id"] for shape in canvas.shapes],
+                ["000002.png#0000"],
+            )
+
+    def test_undo_after_edit_restores_current_group_baseline(self):
+        pixmaps, shapes = self.make_group("000002.png#0000")
+        self.workspace.load_group(pixmaps, shapes)
+        canvas = self.workspace.canvases["HR"]
+        original_point = QtCore.QPointF(canvas.shapes[0].points[0])
+
+        canvas.shapes[0].points[0] = QtCore.QPointF(20, 20)
+        canvas.store_shapes()
+
+        self.assertTrue(canvas.is_shape_restorable)
+        canvas.restore_shape()
+        self.assertEqual(canvas.shapes[0].points[0], original_point)
+        self.assertEqual(
+            canvas.shapes[0].other_data["region_id"],
+            "000002.png#0000",
+        )
+
+    def test_loading_empty_group_clears_stale_selection(self):
+        self.workspace.select_region("000001.png#0000", notify=False)
+        self.assertTrue(
+            all(
+                canvas.selected_shapes
+                for canvas in self.workspace.canvases.values()
+            )
+        )
+        pixmaps, shapes = self.make_group(
+            "unused-region", include_shapes=False
+        )
+
+        self.workspace.load_group(pixmaps, shapes)
+
+        for canvas in self.workspace.canvases.values():
+            self.assertEqual(canvas.shapes, [])
+            self.assertEqual(canvas.selected_shapes, [])
+            self.assertEqual(len(canvas.shapes_backups), 1)
+            self.assertFalse(canvas.is_shape_restorable)
 
 
 if __name__ == "__main__":

@@ -220,6 +220,13 @@ class RealISRWorkspace(QtWidgets.QWidget):
         try:
             for variant in VARIANTS:
                 canvas = self.canvases[variant]
+                # Each group is an independent annotation document.  The
+                # canvases are reused between groups, so discard the previous
+                # group's undo history and any selection references before
+                # storing the new group's initial snapshot.
+                canvas.reset_state()
+                canvas.selected_shapes = []
+                canvas.selected_shapes_copy = []
                 canvas.load_pixmap(pixmaps[variant])
                 canvas.load_shapes(shapes[variant])
                 canvas.realisr_read_only = variant != "HR"
