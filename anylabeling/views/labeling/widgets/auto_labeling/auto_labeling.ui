@@ -94,6 +94,16 @@
         </widget>
     </item>
      <item>
+      <widget class="QLabel" name="realisr_inference_mode_label">
+       <property name="text">
+        <string>Inference Mode</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="realisr_inference_mode_combobox"/>
+     </item>
+     <item>
       <widget class="QLabel" name="output_label">
        <property name="text">
         <string>Output</string>

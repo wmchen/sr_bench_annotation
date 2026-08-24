@@ -1,3 +1,4 @@
+import copy
 import os
 import cv2
 import numpy as np
@@ -243,20 +244,12 @@ class PPOCRv4(Model):
             for i in range(len(selected_shapes)):
                 ori_index = sort_indices[i]
                 shape = selected_shapes[ori_index]
-                updated_shape = Shape(
-                    label=shape.label,
-                    score=shape.score,
-                    shape_type=shape.shape_type,
-                    group_id=shape.group_id,
-                    description=rec_res[i][0],
-                    difficult=shape.difficult,
-                    flags=shape.flags,
-                    attributes=shape.attributes,
-                )
-                for point in shape.points:
-                    updated_shape.add_point(point)
-                if hasattr(shape, "closed"):
-                    updated_shape.closed = shape.closed
+                # Recognition-only inference must alter only the recognized
+                # text.  A deep copy preserves Real-ISR region IDs,
+                # recoverability, geometry, direction, locking and any
+                # extension metadata carried by the original annotation.
+                updated_shape = copy.deepcopy(shape)
+                updated_shape.description = rec_res[i][0]
                 shapes.append(updated_shape)
 
             shapes.extend(unselected_shapes)

@@ -3683,6 +3683,16 @@ Press Enter to search.</source>
       <translation>Zoom follows window width</translation>
     </message>
     <message>
+      <location filename="../../views/labeling/label_widget.py" line="1361" />
+      <source>Focus Selected Object</source>
+      <translation>Focus Selected Object</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/label_widget.py" line="1366" />
+      <source>Zoom and center all Real-ISR views on the selected object</source>
+      <translation>Zoom and center all Real-ISR views on the selected object</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
       <location filename="../../views/labeling/label_widget.py" line="1264" />
       <source>Set Brightness Contrast</source>
@@ -6719,6 +6729,11 @@ Results have been saved to:
   </context>
   <context>
     <name>SettingsDialog</name>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="429" />
+      <source>Focus Selected Object</source>
+      <translation>Focus Selected Object</translation>
+    </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="436" />
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="103" />

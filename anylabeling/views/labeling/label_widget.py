@@ -1357,6 +1357,16 @@ class LabelingWidget(LabelDialog):
             checkable=True,
             enabled=False,
         )
+        focus_selected_object = action(
+            self.tr("Focus Selected Object"),
+            self.focus_selected_realisr_object,
+            shortcuts["focus_selected_object"],
+            "fit-width",
+            self.tr(
+                "Zoom and center all Real-ISR views on the selected object"
+            ),
+            enabled=False,
+        )
         brightness_contrast = action(
             self.tr("Set Brightness Contrast"),
             self.brightness_contrast,
@@ -1974,6 +1984,7 @@ class LabelingWidget(LabelDialog):
             keep_prev_contrast=keep_prev_contrast,
             fit_window=fit_window,
             fit_width=fit_width,
+            focus_selected_object=focus_selected_object,
             brightness_contrast=brightness_contrast,
             set_cross_line=set_cross_line,
             show_groups=show_groups,
@@ -2281,6 +2292,7 @@ class LabelingWidget(LabelDialog):
                 None,
                 fit_window,
                 fit_width,
+                focus_selected_object,
                 None,
                 brightness_contrast,
                 set_cross_line,
@@ -2366,6 +2378,7 @@ class LabelingWidget(LabelDialog):
             open_paddleocr,
             None,
             fit_width,
+            focus_selected_object,
             zoom,
         )
 
@@ -2426,10 +2439,10 @@ class LabelingWidget(LabelDialog):
             self.set_cache_auto_label
         )
         self.auto_labeling_widget.model_manager.prediction_started.connect(
-            lambda: self.canvas.set_loading(True, self.tr("Please wait..."))
+            lambda: self.set_auto_labeling_loading(True)
         )
         self.auto_labeling_widget.model_manager.prediction_finished.connect(
-            lambda: self.canvas.set_loading(False)
+            lambda: self.set_auto_labeling_loading(False)
         )
         self.auto_labeling_widget.model_manager.prediction_finished.connect(
             self.update_thumbnail_display
@@ -2944,6 +2957,22 @@ class LabelingWidget(LabelDialog):
     def on_auto_segmentation_requested(self):
         self.canvas.set_auto_labeling(True)
         self.update_labeling_instruction()
+
+    def set_auto_labeling_loading(self, loading):
+        """Keep the request canvas loading state stable across pane changes."""
+        if loading:
+            canvas = self.canvas
+            if self.realisr_mode:
+                canvas = self.realisr_workspace.canvases["HR"]
+            self._auto_labeling_loading_canvas = canvas
+            canvas.set_loading(True, self.tr("Please wait..."))
+        else:
+            canvas = (
+                getattr(self, "_auto_labeling_loading_canvas", None)
+                or self.canvas
+            )
+            canvas.set_loading(False)
+            self._auto_labeling_loading_canvas = None
 
     @pyqtSlot()
     def on_auto_segmentation_disabled(self):
@@ -6981,6 +7010,17 @@ class LabelingWidget(LabelDialog):
         self.set_dirty()
 
     # Real-ISR grouped annotation -------------------------------------------------
+    def focus_selected_realisr_object(self):
+        if not self.realisr_mode:
+            return False
+        return self.realisr_workspace.focus_selected_object()
+
+    def update_realisr_focus_action_state(self):
+        enabled = self.realisr_mode and (
+            self.realisr_workspace.can_focus_selected_object()
+        )
+        self.actions.focus_selected_object.setEnabled(enabled)
+
     def open_realisr_folder_dialog(
         self, _value=False, dirpath=None, attribute=None
     ):
@@ -7056,6 +7096,7 @@ class LabelingWidget(LabelDialog):
         else:
             self._realisr_description_was_visible = None
         self.auto_labeling_widget.hide()
+        self.auto_labeling_widget.configure_realisr_context()
         self.compare_view_slider.hide()
         self.canvas_adjustment.hide()
         self.thumbnail_container.hide()
@@ -7113,6 +7154,7 @@ class LabelingWidget(LabelDialog):
             }
             self.realisr_mode = False
             self.realisr_dataset = None
+            self.auto_labeling_widget.leave_realisr_context()
             self.realisr_sample = None
             self.realisr_variant = "HR"
             self.realisr_reveal_text = False
@@ -7133,6 +7175,7 @@ class LabelingWidget(LabelDialog):
             self.actions.change_output_dir.setEnabled(True)
             self.actions.toggle_compare_view.setEnabled(True)
             self.actions.toggle_auto_labeling_widget.setEnabled(True)
+            self.update_realisr_focus_action_state()
             self.actions.delete_image_file.setEnabled(True)
             self.dirty = False
             self.update_progress_title()
@@ -7227,6 +7270,9 @@ class LabelingWidget(LabelDialog):
             self._realisr_loading = False
         self.realisr_workspace.set_active_variant(variant)
         self.activate_realisr_variant(variant)
+        self.auto_labeling_widget.refresh_realisr_auto_labeling_state(
+            reset_mode=True
+        )
         self.refresh_realisr_file_list()
         if self.canvas.shapes:
             self.realisr_workspace.select_region(
@@ -7670,13 +7716,15 @@ class LabelingWidget(LabelDialog):
         self.actions.change_output_dir.setEnabled(False)
         self.actions.toggle_compare_view.setEnabled(False)
         self.actions.run_all_images.setEnabled(False)
-        self.actions.toggle_auto_labeling_widget.setEnabled(False)
+        self.actions.toggle_auto_labeling_widget.setEnabled(True)
+        self.update_realisr_focus_action_state()
         self.actions.shape_manager.setEnabled(False)
         self.shape_text_edit.setDisabled(not editable or is_face)
         for action in self.actions.zoom_actions:
             action.setEnabled(False)
         for index in range(10):
             getattr(self.actions, f"digit_shortcut_{index}").setEnabled(False)
+        self.auto_labeling_widget.refresh_realisr_auto_labeling_state()
 
     def commit_realisr_group(self):
         if not self.realisr_mode or not self.realisr_sample:
@@ -7975,12 +8023,20 @@ class LabelingWidget(LabelDialog):
             self.actions.run_all_images.setEnabled(False)
         else:
             self.auto_labeling_widget.show()
-            self.actions.run_all_images.setEnabled(True)
+            self.actions.run_all_images.setEnabled(not self.realisr_mode)
+            if self.realisr_mode:
+                self.auto_labeling_widget.refresh_realisr_auto_labeling_state()
         self.update_thumbnail_display()
 
-    @pyqtSlot()
-    def new_shapes_from_auto_labeling(self, auto_labeling_result):
+    def new_shapes_from_auto_labeling(
+        self, auto_labeling_result, realisr_context=None
+    ):
         """Apply auto labeling results to the current image."""
+        if realisr_context is not None:
+            self._apply_realisr_auto_labeling_result(
+                auto_labeling_result, realisr_context
+            )
+            return
         if not self.image or not self.image_path:
             return
 
@@ -8022,6 +8078,121 @@ class LabelingWidget(LabelDialog):
             self.shape_text_edit.setDisabled(False)
 
         self.set_dirty()
+
+    def _realisr_result_matches_request(self, result, context):
+        if (
+            not self.realisr_mode
+            or self.realisr_dataset is None
+            or self.realisr_variant != "HR"
+            or context.get("task") != self.realisr_dataset.attribute
+            or context.get("sample") != self.realisr_sample
+        ):
+            return False
+        request_path = context.get("image_path")
+        result_path = getattr(result, "image_path", None)
+        current_path = self.filename
+        normalized = [
+            osp.normpath(osp.abspath(path))
+            for path in (request_path, result_path, current_path)
+            if path
+        ]
+        return len(normalized) == 3 and len(set(normalized)) == 1
+
+    @staticmethod
+    def _is_horizontal_rectangle_shape(shape):
+        if shape.shape_type != "rectangle" or len(shape.points) != 4:
+            return False
+        coordinates = {(point.x(), point.y()) for point in shape.points}
+        return (
+            len(coordinates) == 4
+            and len({point[0] for point in coordinates}) == 2
+            and len({point[1] for point in coordinates}) == 2
+        )
+
+    def _normalize_realisr_auto_shapes(self, shapes, task):
+        normalized = []
+        for source in shapes:
+            if task == "face":
+                if not self._is_horizontal_rectangle_shape(source):
+                    continue
+            elif source.shape_type not in {
+                "rectangle",
+                "quadrilateral",
+                "polygon",
+            }:
+                continue
+            shape = copy.deepcopy(source)
+            shape.label = "face" if task == "face" else "text"
+            if task == "face":
+                shape.description = ""
+            shape.locked = False
+            shape.selected = False
+            shape.other_data = dict(getattr(shape, "other_data", {}) or {})
+            shape.other_data.pop("region_id", None)
+            shape.other_data["recoverable"] = 0
+            normalized.append(shape)
+        return normalized
+
+    def _apply_realisr_auto_labeling_result(self, result, context):
+        """Apply a validated prediction to the HR master annotation."""
+        if not self._realisr_result_matches_request(result, context):
+            logger.warning("Ignore stale Real-ISR auto-labeling result")
+            return
+        hr_canvas = self.realisr_workspace.canvases["HR"]
+        mode = context.get("mode")
+        if mode == AutoLabelingWidget.REALISR_FULL_IMAGE_MODE:
+            if hr_canvas.shapes:
+                logger.warning(
+                    "Ignore full-image Real-ISR result because HR now has annotations"
+                )
+                return
+            shapes = self._normalize_realisr_auto_shapes(
+                result.shapes, context["task"]
+            )
+            self.label_list.clear()
+            self.load_shapes(shapes, replace=True, update_last_label=False)
+            selected_region_id = None
+        elif mode == AutoLabelingWidget.REALISR_INSTANCE_MODE:
+            target_region_id = context.get("target_region_id")
+            target = next(
+                (
+                    shape
+                    for shape in hr_canvas.shapes
+                    if self._realisr_region_id(shape) == target_region_id
+                ),
+                None,
+            )
+            recognized = next(iter(result.shapes), None)
+            if target is None or recognized is None:
+                logger.warning(
+                    "Ignore Real-ISR instance result because its target or recognition is missing"
+                )
+                return
+            shapes = [copy.deepcopy(shape) for shape in hr_canvas.shapes]
+            updated = next(
+                shape
+                for shape in shapes
+                if self._realisr_region_id(shape) == target_region_id
+            )
+            updated.description = recognized.description or ""
+            self.label_list.clear()
+            self.load_shapes(shapes, replace=True, update_last_label=False)
+            selected_region_id = target_region_id
+        else:
+            return
+
+        self.set_dirty()
+        if not self.flush_realisr_draft():
+            return
+        if selected_region_id is None and hr_canvas.shapes:
+            selected_region_id = self._realisr_region_id(hr_canvas.shapes[0])
+        if selected_region_id is not None:
+            self.realisr_workspace.select_region(
+                selected_region_id, notify=False
+            )
+        self.refresh_realisr_active_label_list()
+        self.apply_realisr_action_state()
+        self.update_realisr_ui()
 
     def clear_auto_labeling_marks(self):
         """Clear auto labeling marks from the current image."""

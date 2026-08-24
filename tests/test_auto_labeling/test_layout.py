@@ -154,6 +154,8 @@ class TestAutoLabelingLayout(unittest.TestCase):
             "button_skip_detection",
             "mask_fineness_slider",
             "mask_fineness_value_label",
+            "realisr_inference_mode_label",
+            "realisr_inference_mode_combobox",
         )
         for widget_name in hidden_widget_names:
             getattr(form, widget_name).hide()
@@ -271,6 +273,229 @@ class TestAutoLabelingLayout(unittest.TestCase):
             widget.parent.image,
             widget.parent.filename,
             existing_shapes=[quadrilateral],
+        )
+
+    def test_realisr_model_compatibility_is_task_specific(self):
+        widget = SimpleNamespace(
+            REALISR_TEXT_MODEL_TYPES={"ppocr_v4", "ppocr_v5", "ppocr_v6"},
+            REALISR_FACE_MODEL_TYPES={"scrfd", "yolov6_face"},
+            _realisr_task=lambda: "text",
+            model_manager=SimpleNamespace(loaded_model_config=None),
+        )
+
+        self.assertTrue(
+            AutoLabelingWidget._is_realisr_model_compatible(
+                widget, {"type": "ppocr_v6"}
+            )
+        )
+        self.assertFalse(
+            AutoLabelingWidget._is_realisr_model_compatible(
+                widget, {"type": "scrfd"}
+            )
+        )
+        widget._realisr_task = lambda: "face"
+        self.assertTrue(
+            AutoLabelingWidget._is_realisr_model_compatible(
+                widget, {"type": "yolov6_face"}
+            )
+        )
+
+    def test_realisr_instance_requires_hr_and_exactly_one_shape(self):
+        selected = SimpleNamespace(shape_type="quadrilateral")
+        canvas = SimpleNamespace(shapes=[selected], selected_shapes=[])
+        widget = SimpleNamespace(
+            REALISR_FULL_IMAGE_MODE="full_image",
+            _is_realisr_context=lambda: True,
+            _prediction_running=False,
+            model_manager=SimpleNamespace(
+                is_model_download_running=lambda: False,
+                loaded_model_config={"type": "ppocr_v4"},
+            ),
+            _is_realisr_model_compatible=lambda _config=None: True,
+            parent=SimpleNamespace(
+                realisr_variant="LR2",
+                realisr_sample="sample.png",
+                filename="/data/HR/sample.png",
+            ),
+            _realisr_hr_canvas=lambda: canvas,
+            _realisr_mode=lambda: "instance",
+            tr=lambda text: text,
+        )
+
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("only available in HR", reason)
+
+        widget.parent.realisr_variant = "HR"
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("exactly one", reason)
+
+        canvas.selected_shapes = [selected]
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertTrue(enabled)
+        self.assertEqual(reason, "")
+
+        widget._realisr_mode = lambda: "full_image"
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("already has annotations", reason)
+
+    def test_realisr_full_image_confirmation_defaults_to_cancel(self):
+        canvas = SimpleNamespace(shapes=[], selected_shapes=[])
+        manager = SimpleNamespace(predict_shapes_threading=Mock())
+        widget = SimpleNamespace(
+            REALISR_FULL_IMAGE_MODE="full_image",
+            REALISR_INSTANCE_MODE="instance",
+            _realisr_run_eligibility=Mock(return_value=(True, "")),
+            _realisr_mode=lambda: "full_image",
+            _realisr_task=lambda: "text",
+            _realisr_hr_canvas=lambda: canvas,
+            tr=lambda text: text,
+            parent=SimpleNamespace(
+                realisr_sample="sample.png",
+                filename="/data/HR/sample.png",
+                image=object(),
+                flush_realisr_draft=Mock(return_value=True),
+            ),
+            model_manager=manager,
+            _pending_realisr_request=None,
+        )
+
+        with patch.object(
+            QtWidgets.QMessageBox,
+            "question",
+            return_value=QtWidgets.QMessageBox.StandardButton.No,
+        ) as question:
+            AutoLabelingWidget._run_realisr_prediction(widget)
+
+        question.assert_called_once()
+        self.assertEqual(
+            question.call_args.args[-1],
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        manager.predict_shapes_threading.assert_not_called()
+
+    def test_realisr_instance_runs_without_confirmation(self):
+        selected = SimpleNamespace(
+            shape_type="quadrilateral",
+            other_data={"region_id": "sample.png#0000"},
+            selected=True,
+        )
+        canvas = SimpleNamespace(shapes=[selected], selected_shapes=[selected])
+        manager = SimpleNamespace(predict_shapes_threading=Mock())
+        widget = SimpleNamespace(
+            REALISR_FULL_IMAGE_MODE="full_image",
+            REALISR_INSTANCE_MODE="instance",
+            _realisr_run_eligibility=Mock(return_value=(True, "")),
+            _realisr_mode=lambda: "instance",
+            _realisr_task=lambda: "text",
+            _realisr_hr_canvas=lambda: canvas,
+            tr=lambda text: text,
+            parent=SimpleNamespace(
+                realisr_sample="sample.png",
+                filename="/data/HR/sample.png",
+                image=object(),
+                flush_realisr_draft=Mock(return_value=True),
+            ),
+            model_manager=manager,
+            _pending_realisr_request=None,
+        )
+
+        with patch.object(QtWidgets.QMessageBox, "question") as question:
+            AutoLabelingWidget._run_realisr_prediction(widget)
+
+        question.assert_not_called()
+        call = manager.predict_shapes_threading.call_args
+        self.assertEqual(call.args[1], "/data/HR/sample.png")
+        self.assertEqual(len(call.kwargs["existing_shapes"]), 1)
+        self.assertEqual(
+            widget._pending_realisr_request["target_region_id"],
+            "sample.png#0000",
+        )
+
+    def test_realisr_restores_model_remembered_for_task(self):
+        settings = SimpleNamespace(
+            value=Mock(return_value=":/auto_labeling/text.yaml"),
+            remove=Mock(),
+        )
+        manager = SimpleNamespace(
+            loaded_model_config=None,
+            get_model_configs=Mock(
+                return_value=[
+                    {
+                        "config_file": ":/auto_labeling/text.yaml",
+                        "display_name": "Text OCR",
+                    }
+                ]
+            ),
+            load_model=Mock(),
+        )
+        widget = SimpleNamespace(
+            _is_realisr_context=lambda: True,
+            _is_realisr_model_compatible=lambda _config=None: False,
+            _realisr_task=lambda: "text",
+            parent=SimpleNamespace(settings=settings),
+            model_manager=manager,
+            model_selection_button=SimpleNamespace(
+                setText=Mock(), setEnabled=Mock()
+            ),
+            button_run=SimpleNamespace(setEnabled=Mock()),
+        )
+
+        AutoLabelingWidget._restore_realisr_model(widget)
+
+        settings.value.assert_called_once_with(
+            "realisr/auto_labeling_model/text", ""
+        )
+        manager.load_model.assert_called_once_with(
+            ":/auto_labeling/text.yaml"
+        )
+        widget.model_selection_button.setText.assert_called_once_with(
+            "Text OCR"
+        )
+
+    def test_realisr_text_mode_defaults_from_annotation_state(self):
+        config.current_config_file = (
+            "anylabeling/configs/xanylabeling_config.yaml"
+        )
+        canvas = SimpleNamespace(shapes=[], selected_shapes=[])
+        parent = SimpleNamespace(
+            _config=get_config(),
+            realisr_mode=True,
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            realisr_variant="HR",
+            realisr_sample="sample.png",
+            filename="/data/HR/sample.png",
+            realisr_workspace=SimpleNamespace(canvases={"HR": canvas}),
+            settings=SimpleNamespace(
+                value=Mock(return_value=""), remove=Mock(), setValue=Mock()
+            ),
+            new_shapes_from_auto_labeling=Mock(),
+        )
+        widget = AutoLabelingWidget(parent)
+        self._widgets.append(widget)
+
+        widget.configure_realisr_context()
+        self.assertEqual(
+            widget.realisr_inference_mode_combobox.currentData(),
+            widget.REALISR_FULL_IMAGE_MODE,
+        )
+
+        canvas.shapes.append(SimpleNamespace(shape_type="quadrilateral"))
+        widget.refresh_realisr_auto_labeling_state()
+
+        self.assertEqual(
+            widget.realisr_inference_mode_combobox.currentData(),
+            widget.REALISR_INSTANCE_MODE,
+        )
+        full_index = widget.realisr_inference_mode_combobox.findData(
+            widget.REALISR_FULL_IMAGE_MODE
+        )
+        self.assertFalse(
+            widget.realisr_inference_mode_combobox.model()
+            .item(full_index)
+            .isEnabled()
         )
 
     def test_initial_show_reflows_model_selection_row(self):

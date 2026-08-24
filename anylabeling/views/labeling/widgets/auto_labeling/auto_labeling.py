@@ -1,3 +1,4 @@
+import copy
 import os
 import yaml
 import collections
@@ -5,7 +6,14 @@ import collections
 from anylabeling.config import get_config
 
 from PyQt6 import uic
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QPoint, QTimer
+from PyQt6.QtCore import (
+    Qt,
+    pyqtSignal,
+    pyqtSlot,
+    QPoint,
+    QSignalBlocker,
+    QTimer,
+)
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -75,6 +83,11 @@ def update_model_selection_scroll_area_height(scroll_area):
 
 
 class AutoLabelingWidget(QWidget):
+    REALISR_FULL_IMAGE_MODE = "full_image"
+    REALISR_INSTANCE_MODE = "instance"
+    REALISR_TEXT_MODEL_TYPES = {"ppocr_v4", "ppocr_v5", "ppocr_v6"}
+    REALISR_FACE_MODEL_TYPES = {"scrfd", "yolov6_face"}
+
     new_model_selected = pyqtSignal(str)
     new_custom_model_selected = pyqtSignal(str)
     auto_segmentation_requested = pyqtSignal()
@@ -129,6 +142,8 @@ class AutoLabelingWidget(QWidget):
 
         self.skip_auto_prediction = False
         self.model_manager = ModelManager()
+        self._prediction_running = False
+        self._pending_realisr_request = None
         self.model_manager.new_model_status.connect(self.on_new_model_status)
         self.new_model_selected.connect(self.model_manager.load_model)
         self.new_custom_model_selected.connect(
@@ -137,9 +152,7 @@ class AutoLabelingWidget(QWidget):
         self.model_manager.model_loaded.connect(self.update_visible_widgets)
         self.model_manager.model_loaded.connect(self.on_new_model_loaded)
         self.model_manager.new_auto_labeling_result.connect(
-            lambda auto_labeling_result: self.parent.new_shapes_from_auto_labeling(
-                auto_labeling_result
-            )
+            self._on_auto_labeling_result
         )
         self.model_manager.auto_segmentation_model_selected.connect(
             self.auto_segmentation_requested
@@ -201,12 +214,19 @@ class AutoLabelingWidget(QWidget):
             self.florence2_select_combobox.setEnabled(enable)
             self.remote_server_select_combobox.setEnabled(enable)
             self.remote_task_select_combobox.setEnabled(enable)
+            self.button_run.setEnabled(enable)
 
         self.model_manager.prediction_started.connect(
             lambda: set_enable_tools(False)
         )
         self.model_manager.prediction_finished.connect(
             lambda: set_enable_tools(True)
+        )
+        self.model_manager.prediction_started.connect(
+            self._on_prediction_started
+        )
+        self.model_manager.prediction_finished.connect(
+            self._on_prediction_finished
         )
 
         # Init value
@@ -237,8 +257,14 @@ class AutoLabelingWidget(QWidget):
             self.gd_select_combobox,
             self.remote_server_select_combobox,
             self.remote_task_select_combobox,
+            self.realisr_inference_mode_combobox,
         ):
             combo.setStyleSheet(combo_style)
+        self.realisr_inference_mode_combobox.currentIndexChanged.connect(
+            lambda _index: self.refresh_realisr_auto_labeling_state()
+        )
+        self.realisr_inference_mode_label.hide()
+        self.realisr_inference_mode_combobox.hide()
 
         # --- Configuration for: output_label ---
         self.output_label.setText(self.tr("Output"))
@@ -631,6 +657,9 @@ class AutoLabelingWidget(QWidget):
     def on_model_selected(self, provider, model_name):
         """Handle the model selected event"""
 
+        if self._is_realisr_context():
+            self.button_run.setEnabled(False)
+
         if "remote_server" in model_name.lower():
             config_path = self.model_info[model_name].get("config_path")
             if config_path and config_path.startswith(":/"):
@@ -873,8 +902,287 @@ class AutoLabelingWidget(QWidget):
             self.auto_labeling_mode = AutoLabelingMode(edit_mode, shape_type)
         self.auto_labeling_mode_changed.emit(self.auto_labeling_mode)
 
+    def _is_realisr_context(self):
+        return (
+            getattr(self.parent, "realisr_mode", False) is True
+            and getattr(self.parent, "realisr_dataset", None) is not None
+        )
+
+    def _realisr_task(self):
+        if not self._is_realisr_context():
+            return None
+        return self.parent.realisr_dataset.attribute
+
+    def _is_realisr_model_compatible(self, model_config=None):
+        model_config = model_config or self.model_manager.loaded_model_config
+        if not model_config:
+            return False
+        model_type = model_config.get("type")
+        if self._realisr_task() == "text":
+            return model_type in self.REALISR_TEXT_MODEL_TYPES
+        if self._realisr_task() == "face":
+            return model_type in self.REALISR_FACE_MODEL_TYPES
+        return False
+
+    def configure_realisr_context(self):
+        """Configure task-specific controls when Real-ISR mode is entered."""
+        if not self._is_realisr_context():
+            return
+        self._last_realisr_has_annotations = None
+        self.hide_labeling_widgets()
+        self.realisr_inference_mode_label.setText(self.tr("Inference Mode"))
+        with QSignalBlocker(self.realisr_inference_mode_combobox):
+            self.realisr_inference_mode_combobox.clear()
+            self.realisr_inference_mode_combobox.addItem(
+                self.tr("Full Image"), self.REALISR_FULL_IMAGE_MODE
+            )
+            if self._realisr_task() == "text":
+                self.realisr_inference_mode_combobox.addItem(
+                    self.tr("Instance"), self.REALISR_INSTANCE_MODE
+                )
+        self.realisr_inference_mode_label.show()
+        self.realisr_inference_mode_combobox.show()
+        self.button_run.show()
+        self.refresh_realisr_auto_labeling_state(reset_mode=True)
+        self._restore_realisr_model()
+        self._update_model_selection_scroll_area_height()
+
+    def leave_realisr_context(self):
+        """Restore the normal auto-labeling controls."""
+        self.hide_labeling_widgets()
+        model_config = self.model_manager.loaded_model_config
+        if model_config:
+            self.update_visible_widgets(model_config)
+
+    def _restore_realisr_model(self):
+        if not self._is_realisr_context():
+            return
+        loaded = self.model_manager.loaded_model_config
+        if self._is_realisr_model_compatible(loaded):
+            self.update_visible_widgets(loaded)
+            self.on_new_model_loaded(loaded)
+            return
+        task = self._realisr_task()
+        config_file = self.parent.settings.value(
+            f"realisr/auto_labeling_model/{task}", ""
+        )
+        if not config_file:
+            return
+        matching = next(
+            (
+                config
+                for config in self.model_manager.get_model_configs()
+                if os.path.normpath(str(config.get("config_file", "")))
+                == os.path.normpath(str(config_file))
+            ),
+            None,
+        )
+        if matching is None:
+            self.parent.settings.remove(
+                f"realisr/auto_labeling_model/{task}"
+            )
+            return
+        self.model_selection_button.setText(matching["display_name"])
+        self.model_selection_button.setEnabled(False)
+        self.button_run.setEnabled(False)
+        self.model_manager.load_model(matching["config_file"])
+
+    def _realisr_mode(self):
+        mode = self.realisr_inference_mode_combobox.currentData()
+        if self._realisr_task() == "face":
+            return self.REALISR_FULL_IMAGE_MODE
+        return mode or self.REALISR_FULL_IMAGE_MODE
+
+    def _realisr_hr_canvas(self):
+        workspace = getattr(self.parent, "realisr_workspace", None)
+        return workspace.canvases["HR"] if workspace is not None else None
+
+    def _realisr_run_eligibility(self):
+        if not self._is_realisr_context():
+            return False, self.tr("Real-ISR mode is not active.")
+        if self._prediction_running:
+            return False, self.tr("Inference is already running.")
+        if self.model_manager.is_model_download_running():
+            return False, self.tr("Wait for the model to finish loading.")
+        model_config = self.model_manager.loaded_model_config
+        if not model_config:
+            return False, self.tr("Select a model before auto labeling.")
+        if not self._is_realisr_model_compatible(model_config):
+            return False, self.tr(
+                "The selected model is incompatible with this Real-ISR task."
+            )
+        if getattr(self.parent, "realisr_variant", None) != "HR":
+            return False, self.tr("Auto labeling is only available in HR.")
+        if not getattr(self.parent, "realisr_sample", None) or not getattr(
+            self.parent, "filename", None
+        ):
+            return False, self.tr("No HR image is available.")
+        canvas = self._realisr_hr_canvas()
+        if canvas is None:
+            return False, self.tr("No HR image is available.")
+        if self._realisr_mode() == self.REALISR_FULL_IMAGE_MODE:
+            if canvas.shapes:
+                return False, self.tr(
+                    "Full-image inference is disabled because HR already has annotations."
+                )
+            return True, ""
+        selected = list(canvas.selected_shapes)
+        if len(selected) != 1:
+            return False, self.tr(
+                "Select exactly one annotation box for instance inference."
+            )
+        if selected[0].shape_type not in {
+            "rectangle",
+            "rotation",
+            "polygon",
+            "quadrilateral",
+        }:
+            return False, self.tr(
+                "The selected annotation type cannot be recognized."
+            )
+        return True, ""
+
+    def refresh_realisr_auto_labeling_state(self, reset_mode=False):
+        if not self._is_realisr_context():
+            return
+        self.realisr_inference_mode_label.show()
+        self.realisr_inference_mode_combobox.show()
+        self.button_run.show()
+        canvas = self._realisr_hr_canvas()
+        has_annotations = bool(canvas and canvas.shapes)
+        mode_changed_by_state = (
+            reset_mode
+            or self._last_realisr_has_annotations is None
+            or has_annotations != self._last_realisr_has_annotations
+        )
+        self._last_realisr_has_annotations = has_annotations
+        full_index = self.realisr_inference_mode_combobox.findData(
+            self.REALISR_FULL_IMAGE_MODE
+        )
+        if full_index >= 0:
+            item = self.realisr_inference_mode_combobox.model().item(full_index)
+            if item is not None:
+                item.setEnabled(not has_annotations)
+        if self._realisr_task() == "face":
+            self.realisr_inference_mode_combobox.setCurrentIndex(full_index)
+            self.realisr_inference_mode_combobox.setEnabled(False)
+        else:
+            self.realisr_inference_mode_combobox.setEnabled(
+                not self._prediction_running
+            )
+            if mode_changed_by_state:
+                target_mode = (
+                    self.REALISR_INSTANCE_MODE
+                    if has_annotations
+                    else self.REALISR_FULL_IMAGE_MODE
+                )
+                target_index = self.realisr_inference_mode_combobox.findData(
+                    target_mode
+                )
+                if target_index >= 0:
+                    with QSignalBlocker(self.realisr_inference_mode_combobox):
+                        self.realisr_inference_mode_combobox.setCurrentIndex(
+                            target_index
+                        )
+        enabled, reason = self._realisr_run_eligibility()
+        self.button_run.setEnabled(enabled)
+        self.button_run.setToolTip(reason)
+        if reason and (
+            not self.model_manager.loaded_model_config
+            or not self._is_realisr_model_compatible()
+        ):
+            self.model_status_label.setText(reason)
+        self._queue_model_selection_scroll_area_height_update()
+
+    def _run_realisr_prediction(self):
+        enabled, reason = self._realisr_run_eligibility()
+        if not enabled:
+            self.model_manager.new_model_status.emit(reason)
+            self.refresh_realisr_auto_labeling_state()
+            return
+        mode = self._realisr_mode()
+        if mode == self.REALISR_FULL_IMAGE_MODE:
+            task_name = self.tr("text detection and recognition")
+            if self._realisr_task() == "face":
+                task_name = self.tr("face detection")
+            answer = QMessageBox.question(
+                self,
+                self.tr("Confirm Full-Image Inference"),
+                self.tr("Run %s on the entire HR image?") % task_name,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            enabled, reason = self._realisr_run_eligibility()
+            if not enabled:
+                self.model_manager.new_model_status.emit(reason)
+                self.refresh_realisr_auto_labeling_state()
+                return
+
+        canvas = self._realisr_hr_canvas()
+        target_region_id = None
+        existing_shapes = None
+        if mode == self.REALISR_INSTANCE_MODE:
+            if not self.parent.flush_realisr_draft():
+                self.model_manager.new_model_status.emit(
+                    self.tr("Could not save the current HR annotation.")
+                )
+                return
+            canvas = self._realisr_hr_canvas()
+            if len(canvas.selected_shapes) != 1:
+                self.model_manager.new_model_status.emit(
+                    self.tr(
+                        "Select exactly one annotation box for instance inference."
+                    )
+                )
+                self.refresh_realisr_auto_labeling_state()
+                return
+            target = canvas.selected_shapes[0]
+            target_region_id = target.other_data.get("region_id")
+            if not target_region_id:
+                self.model_manager.new_model_status.emit(
+                    self.tr("The selected annotation has no region ID.")
+                )
+                return
+            existing_shapes = [copy.deepcopy(target)]
+            existing_shapes[0].selected = True
+        self._pending_realisr_request = {
+            "task": self._realisr_task(),
+            "sample": self.parent.realisr_sample,
+            "image_path": self.parent.filename,
+            "mode": mode,
+            "target_region_id": target_region_id,
+        }
+        kwargs = {"existing_shapes": existing_shapes} if existing_shapes else {}
+        self.model_manager.predict_shapes_threading(
+            self.parent.image, self.parent.filename, **kwargs
+        )
+
+    def _on_auto_labeling_result(self, auto_labeling_result):
+        context = self._pending_realisr_request
+        self._pending_realisr_request = None
+        if context is not None:
+            self.parent.new_shapes_from_auto_labeling(
+                auto_labeling_result, realisr_context=context
+            )
+        elif not self._is_realisr_context():
+            self.parent.new_shapes_from_auto_labeling(auto_labeling_result)
+
+    def _on_prediction_started(self):
+        self._prediction_running = True
+        self.refresh_realisr_auto_labeling_state()
+
+    def _on_prediction_finished(self):
+        self._prediction_running = False
+        self._pending_realisr_request = None
+        self.refresh_realisr_auto_labeling_state()
+
     def run_prediction(self):
         """Run prediction"""
+        if AutoLabelingWidget._is_realisr_context(self):
+            self._run_realisr_prediction()
+            return
         if self.parent.filename is not None:
             if (
                 self.button_skip_detection.isChecked()
@@ -1023,6 +1331,20 @@ class AutoLabelingWidget(QWidget):
         """Enable model select combobox"""
         self.model_selection_button.setEnabled(True)
 
+        if self._is_realisr_context():
+            task = self.parent.realisr_dataset.attribute
+            if self._is_realisr_model_compatible(model_config):
+                config_file = model_config.get("config_file")
+                if config_file:
+                    self.parent.settings.setValue(
+                        f"realisr/auto_labeling_model/{task}", config_file
+                    )
+            elif not model_config:
+                self.parent.settings.remove(
+                    f"realisr/auto_labeling_model/{task}"
+                )
+            self.refresh_realisr_auto_labeling_state()
+
         # Reset controls to initial values when the model changes
         try:
             if (
@@ -1148,6 +1470,23 @@ class AutoLabelingWidget(QWidget):
         """Update widget status"""
         if not model_config or "model" not in model_config:
             return
+        if self._is_realisr_context():
+            self.hide_labeling_widgets()
+            self.realisr_inference_mode_label.show()
+            self.realisr_inference_mode_combobox.show()
+            self.button_run.show()
+            widgets = model_config["model"].get_required_widgets()
+            for widget_name in (
+                "input_conf",
+                "edit_conf",
+                "input_iou",
+                "edit_iou",
+            ):
+                if widget_name in widgets:
+                    getattr(self, widget_name).show()
+            self.refresh_realisr_auto_labeling_state()
+            self._update_model_selection_scroll_area_height()
+            return
         widgets = model_config["model"].get_required_widgets()
         for widget_name in widgets:
             if hasattr(self, widget_name):
@@ -1194,6 +1533,8 @@ class AutoLabelingWidget(QWidget):
             "mask_fineness_slider",
             "mask_fineness_value_label",
             "button_segment_everything",
+            "realisr_inference_mode_label",
+            "realisr_inference_mode_combobox",
         ]
         for widget in widgets:
             getattr(self, widget).hide()

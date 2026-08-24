@@ -3700,6 +3700,16 @@ Enter 키를 눌러 검색합니다.</translation>
       <translation>창 너비를 따라 확대/축소</translation>
     </message>
     <message>
+      <location filename="../../views/labeling/label_widget.py" line="1361" />
+      <source>Focus Selected Object</source>
+      <translation>선택한 객체에 초점 맞추기</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/label_widget.py" line="1366" />
+      <source>Zoom and center all Real-ISR views on the selected object</source>
+      <translation>선택한 객체를 중심으로 모든 Real-ISR 보기를 확대/축소합니다</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
       <location filename="../../views/labeling/label_widget.py" line="1264" />
       <source>Set Brightness Contrast</source>
@@ -6743,6 +6753,11 @@ Results have been saved to:
   </context>
   <context>
     <name>SettingsDialog</name>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="429" />
+      <source>Focus Selected Object</source>
+      <translation>선택한 객체에 초점 맞추기</translation>
+    </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="436" />
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="103" />

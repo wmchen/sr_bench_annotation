@@ -266,6 +266,82 @@ Review the prompt before generating.</source>
   <context>
     <name>AutoLabelingWidget</name>
     <message>
+      <source>Inference Mode</source>
+      <translation>推理模式</translation>
+    </message>
+    <message>
+      <source>Full Image</source>
+      <translation>全图推理</translation>
+    </message>
+    <message>
+      <source>Instance</source>
+      <translation>实例推理</translation>
+    </message>
+    <message>
+      <source>Real-ISR mode is not active.</source>
+      <translation>Real-ISR 模式未启用。</translation>
+    </message>
+    <message>
+      <source>Inference is already running.</source>
+      <translation>推理正在执行。</translation>
+    </message>
+    <message>
+      <source>Wait for the model to finish loading.</source>
+      <translation>请等待模型加载完成。</translation>
+    </message>
+    <message>
+      <source>Select a model before auto labeling.</source>
+      <translation>自动标注前请先选择模型。</translation>
+    </message>
+    <message>
+      <source>The selected model is incompatible with this Real-ISR task.</source>
+      <translation>所选模型与当前 Real-ISR 任务不兼容。</translation>
+    </message>
+    <message>
+      <source>Auto labeling is only available in HR.</source>
+      <translation>自动标注仅可在 HR 视图中执行。</translation>
+    </message>
+    <message>
+      <source>No HR image is available.</source>
+      <translation>当前没有可用的 HR 图像。</translation>
+    </message>
+    <message>
+      <source>Full-image inference is disabled because HR already has annotations.</source>
+      <translation>HR 已存在标注，已禁用全图推理。</translation>
+    </message>
+    <message>
+      <source>Select exactly one annotation box for instance inference.</source>
+      <translation>实例推理需要恰好选中一个标注框。</translation>
+    </message>
+    <message>
+      <source>The selected annotation type cannot be recognized.</source>
+      <translation>无法识别所选标注的类型。</translation>
+    </message>
+    <message>
+      <source>text detection and recognition</source>
+      <translation>文本检测和识别</translation>
+    </message>
+    <message>
+      <source>face detection</source>
+      <translation>人脸检测</translation>
+    </message>
+    <message>
+      <source>Confirm Full-Image Inference</source>
+      <translation>确认全图推理</translation>
+    </message>
+    <message>
+      <source>Run %s on the entire HR image?</source>
+      <translation>是否对整张 HR 图像执行%s？</translation>
+    </message>
+    <message>
+      <source>Could not save the current HR annotation.</source>
+      <translation>无法保存当前 HR 标注。</translation>
+    </message>
+    <message>
+      <source>The selected annotation has no region ID.</source>
+      <translation>所选标注缺少区域 ID。</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/widgets/auto_labeling/auto_labeling.py" line="244" />
       <location filename="../../views/labeling/widgets/auto_labeling/auto_labeling.py" line="244" />
       <source>Output</source>
@@ -3699,6 +3775,16 @@ Press Enter to search.</source>
       <translation>缩放跟随窗口宽度</translation>
     </message>
     <message>
+      <location filename="../../views/labeling/label_widget.py" line="1361" />
+      <source>Focus Selected Object</source>
+      <translation>聚焦选中对象</translation>
+    </message>
+    <message>
+      <location filename="../../views/labeling/label_widget.py" line="1366" />
+      <source>Zoom and center all Real-ISR views on the selected object</source>
+      <translation>缩放所有 Real-ISR 视图并将选中对象居中</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
       <location filename="../../views/labeling/label_widget.py" line="1264" />
       <source>Set Brightness Contrast</source>
@@ -6920,6 +7006,11 @@ Results have been saved to:
   </context>
   <context>
     <name>SettingsDialog</name>
+    <message>
+      <location filename="../../views/labeling/settings/schema.py" line="429" />
+      <source>Focus Selected Object</source>
+      <translation>聚焦选中对象</translation>
+    </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="436" />
       <location filename="../../../build/lib/anylabeling/views/labeling/settings/dialog.py" line="103" />

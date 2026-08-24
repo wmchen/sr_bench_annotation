@@ -165,6 +165,7 @@ shortcuts:
   zoom_to_original: Ctrl+=
   fit_window: Ctrl+F
   fit_width: Ctrl+Shift+F
+  focus_selected_object: Ctrl+Shift+O
   show_navigator: F9
 
   create_polygon: P

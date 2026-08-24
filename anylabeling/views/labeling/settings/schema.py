@@ -425,6 +425,9 @@ def _shortcut_label(short_key: str) -> str:
         "show_overview": QT_TRANSLATE_NOOP(
             SETTINGS_TRANSLATION_CONTEXT, "Open Overview Dialog"
         ),
+        "focus_selected_object": QT_TRANSLATE_NOOP(
+            SETTINGS_TRANSLATION_CONTEXT, "Focus Selected Object"
+        ),
         "edit_shapes": QT_TRANSLATE_NOOP(
             SETTINGS_TRANSLATION_CONTEXT, "Open Shape Manager Dialog"
         ),
@@ -1314,6 +1317,7 @@ def _shortcut_category_map() -> dict[str, tuple[str, ...]]:
         "View": (
             "fit_width",
             "fit_window",
+            "focus_selected_object",
             "show_attributes",
             "show_labels",
             "show_linking",

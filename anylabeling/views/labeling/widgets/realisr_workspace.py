@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import math
 
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtCore import Qt
@@ -113,6 +114,10 @@ class RealISRCanvas(Canvas):
 
 class RealISRWorkspace(QtWidgets.QWidget):
     """A 2x2 group of canvases with synchronized pan, zoom and selection."""
+
+    MIN_ZOOM_FACTOR = 0.25
+    MAX_ZOOM_FACTOR = 8.0
+    DEFAULT_FOCUS_COVERAGE = 0.70
 
     active_variant_changed = QtCore.pyqtSignal(str)
     selection_changed = QtCore.pyqtSignal(str, list)
@@ -314,8 +319,11 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.set_active_variant(variant)
         ratios = self._scroll_ratios(variant)
         self.zoom_factor = min(
-            8.0,
-            max(0.25, self.zoom_factor * (1.1 if delta > 0 else 0.9)),
+            self.MAX_ZOOM_FACTOR,
+            max(
+                self.MIN_ZOOM_FACTOR,
+                self.zoom_factor * (1.1 if delta > 0 else 0.9),
+            ),
         )
         self.fit_canvases()
         QtCore.QTimer.singleShot(
@@ -393,6 +401,132 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 canvas.update()
         finally:
             self._syncing_selection = False
+
+    def _selected_region_shapes(self):
+        """Return one corresponding selected region for every pane."""
+        selected = self.active_canvas.selected_shapes
+        if len(selected) != 1:
+            return None
+        region_id = self._region_id(selected[0])
+        if region_id is None:
+            return None
+        region_shapes = {}
+        for variant, canvas in self.canvases.items():
+            matches = [
+                shape
+                for shape in canvas.shapes
+                if self._region_id(shape) == region_id
+            ]
+            if len(matches) != 1:
+                return None
+            region_shapes[variant] = matches[0]
+        return region_shapes
+
+    def can_focus_selected_object(self):
+        return self._selected_region_shapes() is not None
+
+    def focus_selected_object(self, coverage=DEFAULT_FOCUS_COVERAGE):
+        """Zoom and center all panes on their selected matching region."""
+        if not 0 < coverage <= 1 or not self.images:
+            return False
+        region_shapes = self._selected_region_shapes()
+        if region_shapes is None:
+            return False
+
+        rectangles = {}
+        for variant, shape in region_shapes.items():
+            try:
+                rectangle = shape.bounding_rect()
+            except (IndexError, TypeError, ValueError):
+                return False
+            dimensions = (rectangle.width(), rectangle.height())
+            if (
+                not all(math.isfinite(value) for value in dimensions)
+                or rectangle.width() <= 0
+                or rectangle.height() <= 0
+            ):
+                return False
+            rectangles[variant] = rectangle
+
+        # Re-establish each canvas' current base scale before deriving one
+        # shared zoom factor.  A shared factor preserves the four-pane visual
+        # correspondence while the minimum candidate guarantees every box
+        # fits inside its pane's requested coverage.
+        self.fit_canvases()
+        candidates = []
+        for variant, rectangle in rectangles.items():
+            canvas = self.canvases[variant]
+            viewport = self.scroll_areas[variant].viewport()
+            if viewport.width() <= 0 or viewport.height() <= 0:
+                return False
+            base_scale = canvas.scale / max(self.zoom_factor, 1e-9)
+            if not math.isfinite(base_scale) or base_scale <= 0:
+                return False
+            # Focusing normally introduces both scrollbars. Account for
+            # their footprint before choosing the scale so the final visible
+            # viewport still honors the requested coverage.
+            target_width = max(
+                1,
+                viewport.width()
+                - self.scroll_bars[variant][
+                    Qt.Orientation.Vertical
+                ].sizeHint().width(),
+            )
+            target_height = max(
+                1,
+                viewport.height()
+                - self.scroll_bars[variant][
+                    Qt.Orientation.Horizontal
+                ].sizeHint().height(),
+            )
+            candidate = min(
+                target_width * coverage / (rectangle.width() * base_scale),
+                target_height
+                * coverage
+                / (rectangle.height() * base_scale),
+            )
+            if not math.isfinite(candidate) or candidate <= 0:
+                return False
+            candidates.append(candidate)
+
+        self.zoom_factor = min(
+            self.MAX_ZOOM_FACTOR,
+            max(self.MIN_ZOOM_FACTOR, min(candidates)),
+        )
+        self.fit_canvases()
+        QtCore.QTimer.singleShot(
+            0,
+            functools.partial(
+                self._center_region_shapes, region_shapes, rectangles
+            ),
+        )
+        return True
+
+    def _center_region_shapes(self, region_shapes, rectangles):
+        """Center matching regions after scrollbar ranges are recalculated."""
+        self._syncing_scroll = True
+        try:
+            for variant, shape in region_shapes.items():
+                canvas = self.canvases[variant]
+                if shape not in canvas.shapes:
+                    continue
+                rectangle = rectangles[variant]
+                center = rectangle.center() + canvas.offset_to_center()
+                viewport = self.scroll_areas[variant].viewport()
+                horizontal = self.scroll_bars[variant][
+                    Qt.Orientation.Horizontal
+                ]
+                vertical = self.scroll_bars[variant][
+                    Qt.Orientation.Vertical
+                ]
+                horizontal.setValue(
+                    round(center.x() * canvas.scale - viewport.width() / 2)
+                )
+                vertical.setValue(
+                    round(center.y() * canvas.scale - viewport.height() / 2)
+                )
+        finally:
+            self._syncing_scroll = False
 
     def set_lr_text_revealed(self, revealed):
         for variant in VARIANTS[1:]:

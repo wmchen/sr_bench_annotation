@@ -40,8 +40,12 @@ class RealISRWorkspaceTest(unittest.TestCase):
             "double_click_edit_label": True,
         }
         self.parent = QtWidgets.QWidget()
+        parent_layout = QtWidgets.QVBoxLayout(self.parent)
+        parent_layout.setContentsMargins(0, 0, 0, 0)
         self.workspace = RealISRWorkspace(options, self.parent)
-        self.workspace.resize(800, 600)
+        parent_layout.addWidget(self.workspace)
+        self.parent.resize(800, 600)
+        self.parent.show()
         self.workspace.show()
 
         pixmaps, shapes = self.make_group("000001.png#0000")
@@ -96,7 +100,10 @@ class RealISRWorkspaceTest(unittest.TestCase):
         self.parent.close()
 
     def test_four_panes_have_equal_display_width(self):
-        widths = [canvas.width() for canvas in self.workspace.canvases.values()]
+        widths = [
+            canvas.pixmap.width() * canvas.scale
+            for canvas in self.workspace.canvases.values()
+        ]
         self.assertLessEqual(max(widths) - min(widths), 1)
 
     def test_activation_and_selection_are_synchronized(self):
@@ -105,6 +112,103 @@ class RealISRWorkspaceTest(unittest.TestCase):
         self.assertEqual(self.workspace.active_variant, "LR3")
         for canvas in self.workspace.canvases.values():
             self.assertEqual(len(canvas.selected_shapes), 1)
+
+    def test_focus_selected_object_zooms_and_centers_all_panes(self):
+        for variant, canvas in self.workspace.canvases.items():
+            width = canvas.pixmap.width()
+            height = canvas.pixmap.height()
+            canvas.shapes[0].points = [
+                QtCore.QPointF(width * 0.55, height * 0.40),
+                QtCore.QPointF(width * 0.65, height * 0.40),
+                QtCore.QPointF(width * 0.65, height * 0.50),
+                QtCore.QPointF(width * 0.55, height * 0.50),
+            ]
+        self.workspace.select_region("000001.png#0000", notify=False)
+
+        focused = self.workspace.focus_selected_object()
+        self.app.processEvents()
+        self.app.processEvents()
+
+        self.assertTrue(focused)
+        self.assertGreater(self.workspace.zoom_factor, 1.0)
+        for variant, canvas in self.workspace.canvases.items():
+            self.assertEqual(len(canvas.selected_shapes), 1)
+            rectangle = canvas.selected_shapes[0].bounding_rect()
+            center = rectangle.center() + canvas.offset_to_center()
+            viewport = self.workspace.scroll_areas[variant].viewport()
+            bars = self.workspace.scroll_bars[variant]
+            displayed_x = (
+                center.x() * canvas.scale
+                - bars[QtCore.Qt.Orientation.Horizontal].value()
+            )
+            displayed_y = (
+                center.y() * canvas.scale
+                - bars[QtCore.Qt.Orientation.Vertical].value()
+            )
+            self.assertAlmostEqual(
+                displayed_x, viewport.width() / 2, delta=2.0
+            )
+            self.assertAlmostEqual(
+                displayed_y, viewport.height() / 2, delta=2.0
+            )
+            self.assertLessEqual(
+                rectangle.width() * canvas.scale,
+                viewport.width() * 0.70 + 2.0,
+            )
+            self.assertLessEqual(
+                rectangle.height() * canvas.scale,
+                viewport.height() * 0.70 + 2.0,
+            )
+
+    def test_focus_selected_object_clamps_edge_scroll_position(self):
+        for canvas in self.workspace.canvases.values():
+            width = canvas.pixmap.width()
+            height = canvas.pixmap.height()
+            canvas.shapes[0].points = [
+                QtCore.QPointF(0, 0),
+                QtCore.QPointF(width * 0.10, 0),
+                QtCore.QPointF(width * 0.10, height * 0.10),
+                QtCore.QPointF(0, height * 0.10),
+            ]
+        self.workspace.select_region("000001.png#0000", notify=False)
+
+        self.assertTrue(self.workspace.focus_selected_object())
+        self.app.processEvents()
+        self.app.processEvents()
+
+        for bars in self.workspace.scroll_bars.values():
+            self.assertEqual(
+                bars[QtCore.Qt.Orientation.Horizontal].value(), 0
+            )
+            self.assertEqual(bars[QtCore.Qt.Orientation.Vertical].value(), 0)
+
+    def test_focus_selected_object_respects_maximum_zoom(self):
+        for canvas in self.workspace.canvases.values():
+            width = canvas.pixmap.width()
+            height = canvas.pixmap.height()
+            canvas.shapes[0].points = [
+                QtCore.QPointF(width * 0.50, height * 0.50),
+                QtCore.QPointF(width * 0.51, height * 0.50),
+                QtCore.QPointF(width * 0.51, height * 0.51),
+                QtCore.QPointF(width * 0.50, height * 0.51),
+            ]
+        self.workspace.select_region("000001.png#0000", notify=False)
+
+        self.assertTrue(self.workspace.focus_selected_object())
+        self.assertEqual(
+            self.workspace.zoom_factor,
+            self.workspace.MAX_ZOOM_FACTOR,
+        )
+
+    def test_focus_selected_object_requires_one_complete_region(self):
+        original_zoom = self.workspace.zoom_factor
+        self.assertFalse(self.workspace.focus_selected_object())
+        self.assertEqual(self.workspace.zoom_factor, original_zoom)
+
+        self.workspace.select_region("000001.png#0000", notify=False)
+        self.workspace.canvases["LR4"].shapes.clear()
+        self.assertFalse(self.workspace.focus_selected_object())
+        self.assertEqual(self.workspace.zoom_factor, original_zoom)
 
     def test_lr_truth_is_revealed_only_in_active_pane(self):
         self.workspace.set_active_variant("LR2")

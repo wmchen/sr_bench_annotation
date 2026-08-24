@@ -276,6 +276,13 @@ class TestSettingsController(unittest.TestCase):
             )
 
     def test_shortcut_conflict_and_whitelist(self):
+        self.assertEqual(
+            self.controller.get_value("shortcuts.focus_selected_object"),
+            "Ctrl+Shift+O",
+        )
+        self.assertEqual(
+            self.controller.get_value("shortcuts.show_overview"), "Ctrl+G"
+        )
         with self.assertRaises(SettingsValidationError) as ctx:
             self.controller.update_field(
                 "shortcuts.open",
@@ -287,6 +294,17 @@ class TestSettingsController(unittest.TestCase):
         self.assertIn("(File)", str(ctx.exception))
         self.assertIn("shortcuts.open", ctx.exception.conflict_keys)
         self.assertIn("shortcuts.save", ctx.exception.conflict_keys)
+
+        with self.assertRaises(SettingsValidationError) as ctx:
+            self.controller.update_field(
+                "shortcuts.show_overview",
+                "Ctrl+Shift+O",
+                schedule_save=False,
+            )
+        self.assertIn(
+            "shortcuts.focus_selected_object", ctx.exception.conflict_keys
+        )
+        self.assertIn("shortcuts.show_overview", ctx.exception.conflict_keys)
 
         self.controller.update_field(
             "shortcuts.undo_last_point",

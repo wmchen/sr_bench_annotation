@@ -80,6 +80,9 @@ class SettingsRuntimeApplier:
             "shortcuts.zoom_to_original": self._widget.actions.zoom_org,
             "shortcuts.fit_window": self._widget.actions.fit_window,
             "shortcuts.fit_width": self._widget.actions.fit_width,
+            "shortcuts.focus_selected_object": (
+                self._widget.actions.focus_selected_object
+            ),
             "shortcuts.show_navigator": self._widget.actions.show_navigator,
             "shortcuts.create_polygon": self._widget.actions.create_mode,
             "shortcuts.create_brush_polygon": self._widget.actions.create_brush_polygon_mode,
