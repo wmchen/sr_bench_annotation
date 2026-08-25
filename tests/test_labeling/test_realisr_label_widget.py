@@ -43,18 +43,22 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             return "/dataset"
 
         dataset = SimpleNamespace(attribute="face")
-        with patch.object(
-            QtWidgets.QInputDialog,
-            "getItem",
-            side_effect=select_attribute,
-        ), patch.object(
-            QtWidgets.QFileDialog,
-            "getExistingDirectory",
-            side_effect=select_directory,
-        ), patch(
-            "anylabeling.views.labeling.label_widget.RealISRDataset",
-            return_value=dataset,
-        ) as dataset_class:
+        with (
+            patch.object(
+                QtWidgets.QInputDialog,
+                "getItem",
+                side_effect=select_attribute,
+            ),
+            patch.object(
+                QtWidgets.QFileDialog,
+                "getExistingDirectory",
+                side_effect=select_directory,
+            ),
+            patch(
+                "anylabeling.views.labeling.label_widget.RealISRDataset",
+                return_value=dataset,
+            ) as dataset_class,
+        ):
             LabelingWidget.open_realisr_folder_dialog(widget)
 
         self.assertEqual(call_order, ["attribute", "directory"])
@@ -63,36 +67,45 @@ class RealISRLabelWidgetTest(unittest.TestCase):
 
     def test_canceling_attribute_does_not_open_directory(self):
         widget = self.make_open_widget()
-        with patch.object(
-            QtWidgets.QInputDialog,
-            "getItem",
-            return_value=("Text", False),
-        ), patch.object(
-            QtWidgets.QFileDialog, "getExistingDirectory"
-        ) as directory_dialog:
+        with (
+            patch.object(
+                QtWidgets.QInputDialog,
+                "getItem",
+                return_value=("Text", False),
+            ),
+            patch.object(
+                QtWidgets.QFileDialog, "getExistingDirectory"
+            ) as directory_dialog,
+        ):
             LabelingWidget.open_realisr_folder_dialog(widget)
         directory_dialog.assert_not_called()
         widget.enter_realisr_mode.assert_not_called()
 
     def test_canceling_directory_does_not_create_dataset(self):
         widget = self.make_open_widget()
-        with patch.object(
-            QtWidgets.QInputDialog,
-            "getItem",
-            return_value=("Text", True),
-        ), patch.object(
-            QtWidgets.QFileDialog,
-            "getExistingDirectory",
-            return_value="",
-        ), patch(
-            "anylabeling.views.labeling.label_widget.RealISRDataset"
-        ) as dataset_class:
+        with (
+            patch.object(
+                QtWidgets.QInputDialog,
+                "getItem",
+                return_value=("Text", True),
+            ),
+            patch.object(
+                QtWidgets.QFileDialog,
+                "getExistingDirectory",
+                return_value="",
+            ),
+            patch(
+                "anylabeling.views.labeling.label_widget.RealISRDataset"
+            ) as dataset_class,
+        ):
             LabelingWidget.open_realisr_folder_dialog(widget)
         dataset_class.assert_not_called()
         widget.enter_realisr_mode.assert_not_called()
 
     def test_focus_selected_object_is_realisr_only(self):
-        workspace = SimpleNamespace(focus_selected_object=Mock(return_value=True))
+        workspace = SimpleNamespace(
+            focus_selected_object=Mock(return_value=True)
+        )
         widget = SimpleNamespace(
             realisr_mode=False,
             realisr_workspace=workspace,
@@ -122,6 +135,41 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         widget.realisr_mode = True
         LabelingWidget.update_realisr_focus_action_state(widget)
         action.setEnabled.assert_called_with(True)
+
+    def test_variant_switch_flushes_only_when_hr_is_dirty(self):
+        def make_widget(hr_dirty):
+            canvas = SimpleNamespace()
+            workspace = SimpleNamespace(
+                canvases={"LR2": canvas},
+                scroll_areas={"LR2": object()},
+                scroll_bars={"LR2": {}},
+                images={},
+                set_active_variant=Mock(),
+            )
+            return SimpleNamespace(
+                realisr_mode=True,
+                realisr_variant="HR",
+                _realisr_loading=False,
+                _realisr_hr_dirty=hr_dirty,
+                flush_realisr_draft=Mock(return_value=True),
+                realisr_workspace=workspace,
+                label_list=SimpleNamespace(canvas=None),
+                realisr_sample=None,
+                realisr_dataset=SimpleNamespace(),
+                refresh_realisr_active_label_list=Mock(),
+                refresh_realisr_label_display=Mock(),
+                apply_realisr_action_state=Mock(),
+                update_realisr_ui=Mock(),
+                update_progress_title=Mock(),
+            )
+
+        clean = make_widget(False)
+        LabelingWidget.activate_realisr_variant(clean, "LR2")
+        clean.flush_realisr_draft.assert_not_called()
+
+        dirty = make_widget(True)
+        LabelingWidget.activate_realisr_variant(dirty, "LR2")
+        dirty.flush_realisr_draft.assert_called_once_with()
 
     def test_face_new_shape_uses_fixed_label_without_popup(self):
         draft_shape = SimpleNamespace(shape_type="rectangle")
@@ -247,9 +295,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             apply_realisr_action_state=Mock(),
             update_realisr_ui=Mock(),
         )
-        result = AutoLabelingResult(
-            [SimpleNamespace(description="new text")]
-        )
+        result = AutoLabelingResult([SimpleNamespace(description="new text")])
         context = {
             "mode": "instance",
             "target_region_id": "sample.png#0000",
@@ -275,9 +321,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             realisr_sample="current.png",
             filename="/dataset/HR/current.png",
         )
-        result = AutoLabelingResult(
-            [], image_path="/dataset/HR/previous.png"
-        )
+        result = AutoLabelingResult([], image_path="/dataset/HR/previous.png")
         context = {
             "task": "text",
             "sample": "previous.png",

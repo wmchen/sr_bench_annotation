@@ -83,9 +83,7 @@ class RealISRDatasetTest(unittest.TestCase):
 
     def complete(self, dataset, region_id, values=(0, 1, 1, 2)):
         for variant, value in zip(VARIANTS, values):
-            dataset.set_recoverable(
-                "000001.png", variant, region_id, value
-            )
+            dataset.set_recoverable("000001.png", variant, region_id, value)
 
     def write_formal_group(
         self,
@@ -213,9 +211,9 @@ class RealISRDatasetTest(unittest.TestCase):
         self.assertFalse(draft_path.exists())
         for variant in VARIANTS:
             payload = json.loads(
-                Path(
-                    restored.json_path_for(variant, "000001.png")
-                ).read_text(encoding="utf-8")
+                Path(restored.json_path_for(variant, "000001.png")).read_text(
+                    encoding="utf-8"
+                )
             )
             shape = payload["shapes"][0]
             self.assertEqual(payload["realisr"]["attribute"], "face")
@@ -301,9 +299,7 @@ class RealISRDatasetTest(unittest.TestCase):
         described = self.face_record()
         described["description"] = "identity"
         invalid_records.append((described, "non-empty face description"))
-        rotated = self.face_record(
-            [[1, 1], [10, 2], [9, 10], [0, 9]]
-        )
+        rotated = self.face_record([[1, 1], [10, 2], [9, 10], [0, 9]])
         invalid_records.append((rotated, "non-horizontal face rectangle"))
 
         for record, message in invalid_records:
@@ -330,13 +326,40 @@ class RealISRDatasetTest(unittest.TestCase):
             },
         )
         for variant, value in zip(VARIANTS[1:], (0, 1, 2)):
-            dataset.set_recoverable(
-                "000001.png", variant, region_id, value
-            )
+            dataset.set_recoverable("000001.png", variant, region_id, value)
         stats = dataset.dashboard_stats()
         self.assertEqual(stats["instances"], 1)
         self.assertEqual(stats["completed_instances"], 1)
         self.assertEqual(stats["recoverability_assigned"], 3)
+
+    def test_change_results_and_dashboard_cache_track_real_mutations(self):
+        dataset = RealISRDataset(self.root, "text")
+        self.assertTrue(
+            dataset.set_hr_records("000001.png", [self.text_record()])
+        )
+        records = dataset.records_for("000001.png", "HR")
+        self.assertFalse(dataset.set_hr_records("000001.png", records))
+        region_id = records[0]["region_id"]
+
+        self.assertTrue(
+            dataset.set_recoverable("000001.png", "LR2", region_id, 1)
+        )
+        self.assertFalse(
+            dataset.set_recoverable("000001.png", "LR2", region_id, 1)
+        )
+        self.assertEqual(
+            dataset.dashboard_stats(), dataset._dashboard_stats_uncached()
+        )
+
+    def test_save_draft_is_noop_without_a_new_revision(self):
+        dataset = RealISRDataset(self.root, "text")
+        self.add_record(dataset, self.text_record())
+        self.assertTrue(dataset.save_draft())
+
+        with mock.patch.object(dataset_module, "_atomic_write") as write:
+            self.assertFalse(dataset.save_draft())
+
+        write.assert_not_called()
 
     def test_monotonicity_is_warning_not_completeness_error(self):
         dataset = RealISRDataset(self.root, "text")
@@ -370,9 +393,7 @@ class RealISRDatasetTest(unittest.TestCase):
             self.assertFalse(
                 Path(dataset.json_path_for(variant, "000001.png")).exists()
             )
-        self.assertTrue(
-            (self.root / "annotations" / DRAFT_FILENAME).exists()
-        )
+        self.assertTrue((self.root / "annotations" / DRAFT_FILENAME).exists())
 
     def test_successful_overwrite_removes_backups(self):
         dataset = RealISRDataset(self.root, "text")

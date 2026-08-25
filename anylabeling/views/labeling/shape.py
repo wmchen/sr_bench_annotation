@@ -1,4 +1,5 @@
 import copy
+import itertools
 import math
 
 from PyQt6 import QtCore, QtGui
@@ -64,6 +65,9 @@ class Shape:
     CUBOID_FRONT_BOTTOM_EDGE_CENTER = 11
     CUBOID_BACK_LEFT_EDGE_CENTER = 12
     CUBOID_BACK_RIGHT_EDGE_CENTER = 13
+    _history_id_source = itertools.count(1)
+    _geometry_epoch_source = itertools.count(1)
+    _active_geometry_epoch = None
 
     def __init__(
         self,
@@ -83,6 +87,12 @@ class Shape:
             attributes = {}
         if kie_linking is None:
             kie_linking = []
+        self._geometry_cache_key = None
+        self._cached_path = None
+        self._cached_mask_path = None
+        self._cached_bounding_rect = None
+        self._geometry_cache_epoch = -1
+        self._history_id = next(self._history_id_source)
         self.label = label
         self.score = score
         self.group_id = group_id
@@ -198,6 +208,58 @@ class Shape:
         if value not in self.get_supported_shape():
             raise ValueError(f"Unexpected shape_type: {value}")
         self._shape_type = value
+        self.invalidate_geometry_cache()
+
+    @property
+    def points(self):
+        return self._points
+
+    @points.setter
+    def points(self, value):
+        self._points = value
+        if hasattr(self, "_geometry_cache_key"):
+            self.invalidate_geometry_cache()
+
+    @classmethod
+    def begin_geometry_batch(cls):
+        cls._active_geometry_epoch = next(cls._geometry_epoch_source)
+
+    @classmethod
+    def end_geometry_batch(cls):
+        cls._active_geometry_epoch = None
+
+    def invalidate_geometry_cache(self):
+        """Discard derived geometry after an explicit mutation."""
+        self._geometry_cache_key = None
+        self._cached_path = None
+        self._cached_mask_path = None
+        self._cached_bounding_rect = None
+        self._geometry_cache_epoch = -1
+
+    def _current_geometry_key(self):
+        # Recompute the lightweight key on access as Shape.points is a public
+        # list and integrations may mutate an existing QPointF in place.
+        return (
+            self.shape_type,
+            self._closed,
+            tuple((point.x(), point.y()) for point in self.points),
+        )
+
+    def _ensure_geometry_cache_key(self):
+        active_epoch = self._active_geometry_epoch
+        if (
+            active_epoch is not None
+            and self._geometry_cache_epoch == active_epoch
+        ):
+            return
+        key = self._current_geometry_key()
+        if key != self._geometry_cache_key:
+            self._geometry_cache_key = key
+            self._cached_path = None
+            self._cached_mask_path = None
+            self._cached_bounding_rect = None
+        if active_epoch is not None:
+            self._geometry_cache_epoch = active_epoch
 
     @staticmethod
     def get_supported_shape():
@@ -220,6 +282,7 @@ class Shape:
             cy = (self.points[0].y() + self.points[2].y()) / 2
             self.center = QtCore.QPointF(cx, cy)
         self._closed = True
+        self.invalidate_geometry_cache()
 
     def reach_max_points(self):
         if self.shape_type == "cuboid":
@@ -248,6 +311,7 @@ class Shape:
                 self.close()
             else:
                 self.points.append(point)
+        self.invalidate_geometry_cache()
 
     def can_add_point(self):
         """Check if shape supports more points"""
@@ -405,16 +469,20 @@ class Shape:
     def pop_point(self):
         """Remove and return the last point of the shape"""
         if self.points:
-            return self.points.pop()
+            point = self.points.pop()
+            self.invalidate_geometry_cache()
+            return point
         return None
 
     def insert_point(self, i, point):
         """Insert a point to a specific index"""
         self.points.insert(i, point)
+        self.invalidate_geometry_cache()
 
     def remove_point(self, i):
         """Remove point from a specific index"""
         self.points.pop(i)
+        self.invalidate_geometry_cache()
 
     def is_closed(self):
         """Check if the shape is closed"""
@@ -423,6 +491,7 @@ class Shape:
     def set_open(self):
         """Set shape to open - (_close=False)"""
         self._closed = False
+        self.invalidate_geometry_cache()
 
     def get_rect_from_line(self, pt1, pt2):
         """Get rectangle from diagonal line"""
@@ -442,6 +511,31 @@ class Shape:
             if self.difficult and self.shape_type != "point":
                 pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             painter.setPen(pen)
+
+            if (
+                not self.selected
+                and not self.fill
+                and self._highlight_index is None
+                and self.shape_type
+                in {
+                    "polygon",
+                    "rectangle",
+                    "rotation",
+                    "quadrilateral",
+                    "circle",
+                }
+            ):
+                # Completed, inactive shapes dominate large-object scenes.
+                # Reuse the same closed geometry as mask painting instead of
+                # rebuilding an identical QPainterPath on every frame.
+                painter.drawPath(self.make_mask_path())
+                if self.shape_type in {"polygon", "quadrilateral"}:
+                    vertex_path = QtGui.QPainterPath()
+                    self.draw_vertex(vertex_path, 0)
+                    painter.drawPath(vertex_path)
+                    if self._vertex_fill_color is not None:
+                        painter.fillPath(vertex_path, self._vertex_fill_color)
+                return
 
             line_path = QtGui.QPainterPath()
             vrtx_path = QtGui.QPainterPath()
@@ -762,6 +856,9 @@ class Shape:
 
     def make_path(self):
         """Create a path from shape"""
+        self._ensure_geometry_cache_key()
+        if self._cached_path is not None:
+            return self._cached_path
         if not self.points:
             return QtGui.QPainterPath()
         if self.shape_type == "rectangle":
@@ -789,19 +886,54 @@ class Shape:
             path = QtGui.QPainterPath(self.points[0])
             for p in self.points[1:]:
                 path.lineTo(p)
+        self._cached_path = path
+        return path
+
+    def make_mask_path(self):
+        """Return the cached closed path used for translucent shape masks."""
+        self._ensure_geometry_cache_key()
+        if self._cached_mask_path is not None:
+            return self._cached_mask_path
+        path = QtGui.QPainterPath()
+        if not self.points:
+            return path
+        if self.shape_type == "circle":
+            if len(self.points) == 2:
+                path.addEllipse(self.get_circle_rect_from_line(self.points))
+        elif self.shape_type == "rectangle" and len(self.points) == 2:
+            path.addRect(self.get_rect_from_line(*self.points))
+        elif self.shape_type == "rotation" and len(self.points) == 2:
+            path.addRect(self.get_rect_from_line(*self.points))
+        else:
+            path.moveTo(self.points[0])
+            for point in self.points[1:]:
+                path.lineTo(point)
+            if self.shape_type in {
+                "polygon",
+                "rectangle",
+                "rotation",
+                "quadrilateral",
+            }:
+                path.closeSubpath()
+        self._cached_mask_path = path
         return path
 
     def bounding_rect(self):
         """Return bounding rectangle of the shape"""
-        return self.make_path().boundingRect()
+        self._ensure_geometry_cache_key()
+        if self._cached_bounding_rect is None:
+            self._cached_bounding_rect = self.make_path().boundingRect()
+        return QtCore.QRectF(self._cached_bounding_rect)
 
     def move_by(self, offset):
         """Move all points by an offset"""
         self.points = [p + offset for p in self.points]
+        self.invalidate_geometry_cache()
 
     def move_vertex_by(self, i, offset):
         """Move a specific vertex by an offset"""
         self.points[i] = self.points[i] + offset
+        self.invalidate_geometry_cache()
 
     def highlight_vertex(self, i, action):
         """Highlight a vertex appropriately based on the current action
@@ -818,9 +950,40 @@ class Shape:
         """Clear the highlighted point"""
         self._highlight_index = None
 
-    def copy(self):
+    def copy(self, preserve_history_id=False):
         """Copy shape"""
-        return copy.deepcopy(self)
+        shape = copy.deepcopy(self)
+        if not preserve_history_id:
+            shape._history_id = next(self._history_id_source)
+        shape.invalidate_geometry_cache()
+        return shape
+
+    def history_copy(self):
+        """Copy annotation state while retaining its undo identity."""
+        return self.copy(preserve_history_id=True)
+
+    def reset_history_id(self):
+        self._history_id = next(self._history_id_source)
+
+    def __deepcopy__(self, memo):
+        """Deep-copy model state without non-pickleable render caches."""
+        duplicate = self.__class__.__new__(self.__class__)
+        memo[id(self)] = duplicate
+        cache_fields = {
+            "_geometry_cache_key",
+            "_cached_path",
+            "_cached_mask_path",
+            "_cached_bounding_rect",
+        }
+        for key, value in self.__dict__.items():
+            if key not in cache_fields:
+                setattr(duplicate, key, copy.deepcopy(value, memo))
+        duplicate._geometry_cache_key = None
+        duplicate._cached_path = None
+        duplicate._cached_mask_path = None
+        duplicate._cached_bounding_rect = None
+        duplicate._geometry_cache_epoch = -1
+        return duplicate
 
     def __len__(self):
         return len(self.points)
@@ -830,3 +993,4 @@ class Shape:
 
     def __setitem__(self, key, value):
         self.points[key] = value
+        self.invalidate_geometry_cache()

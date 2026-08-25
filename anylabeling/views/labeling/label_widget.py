@@ -243,6 +243,9 @@ class LabelingWidget(LabelDialog):
         self.realisr_reveal_text = False
         self._realisr_description_was_visible = None
         self._realisr_loading = False
+        self._realisr_hr_dirty = False
+        self._realisr_hr_sync_dirty = False
+        self._realisr_draft_dirty = False
         self._realisr_empty_confirmed = set()
         self._realisr_completion_notified = set()
         self.realisr_draft_timer = QtCore.QTimer(self)
@@ -2642,9 +2645,7 @@ class LabelingWidget(LabelDialog):
             button = QPushButton(str(recoverable))
             button.setCheckable(True)
             button.clicked.connect(
-                functools.partial(
-                    self.set_realisr_recoverable, recoverable
-                )
+                functools.partial(self.set_realisr_recoverable, recoverable)
             )
             self.realisr_recoverability_group.addButton(button, recoverable)
             self.realisr_recoverability_buttons[recoverable] = button
@@ -2659,9 +2660,7 @@ class LabelingWidget(LabelDialog):
         self.realisr_commit_button = QPushButton(
             self.tr("Confirm current group")
         )
-        self.realisr_commit_button.clicked.connect(
-            self.commit_realisr_group
-        )
+        self.realisr_commit_button.clicked.connect(self.commit_realisr_group)
         realisr_panel_layout.addWidget(self.realisr_commit_button)
         self.realisr_panel.hide()
         right_sidebar_layout.addWidget(self.realisr_panel)
@@ -3086,6 +3085,12 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode:
             if not self._realisr_loading:
                 self.dirty = True
+                # Geometry and label editing are enabled only in HR.  Keep a
+                # separate flag from LR recoverability changes so view
+                # activation does not rebuild dependent canvases needlessly.
+                if self.realisr_variant == "HR":
+                    self._realisr_hr_dirty = True
+                self._realisr_draft_dirty = True
                 self.actions.save.setEnabled(True)
                 self.realisr_draft_timer.start()
                 self.apply_realisr_action_state()
@@ -5180,6 +5185,8 @@ class LabelingWidget(LabelDialog):
             self.label_list.setUpdatesEnabled(True)
             self._no_selection_slot = False
         self.canvas.load_shapes(shapes, replace=replace)
+        if self.realisr_mode and self.realisr_variant in REALISR_VARIANTS:
+            self.realisr_workspace.rebuild_region_index(self.realisr_variant)
         self._refresh_shape_filters()
 
     def load_flags(self, flags):
@@ -5474,10 +5481,7 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode and self.realisr_variant != "HR":
             self.canvas.undo_last_line()
             return
-        if (
-            self.realisr_mode
-            and self.realisr_dataset.attribute == "face"
-        ):
+        if self.realisr_mode and self.realisr_dataset.attribute == "face":
             if self.canvas.shapes[-1].shape_type != "rectangle":
                 self.canvas.undo_last_line()
                 return
@@ -5593,11 +5597,11 @@ class LabelingWidget(LabelDialog):
         else:
             if self.canvas.is_magic_wand_mode:
                 self.canvas.shapes.pop()
-                self.canvas.shapes_backups.pop()
+                self.canvas.discard_last_history()
                 self.canvas.update()
             else:
                 self.canvas.undo_last_line()
-                self.canvas.shapes_backups.pop()
+                self.canvas.discard_last_history()
 
     def show_shape(self, shape_height, shape_width, pos):
         """Display annotation width and height while hovering inside.
@@ -6335,9 +6339,7 @@ class LabelingWidget(LabelDialog):
                 Qt.Key.Key_2: 2,
             }
             if event.key() in recoverability_keys:
-                self.set_realisr_recoverable(
-                    recoverability_keys[event.key()]
-                )
+                self.set_realisr_recoverable(recoverability_keys[event.key()])
                 event.accept()
                 return
             if (
@@ -6374,9 +6376,7 @@ class LabelingWidget(LabelDialog):
 
     def resizeEvent(self, _):
         if self.realisr_mode:
-            QtCore.QTimer.singleShot(
-                0, self.realisr_workspace.fit_canvases
-            )
+            QtCore.QTimer.singleShot(0, self.realisr_workspace.fit_canvases)
             return
         if (
             self.canvas
@@ -6443,9 +6443,11 @@ class LabelingWidget(LabelDialog):
                     return
         self.settings.setValue(
             "filename",
-            ""
-            if self.realisr_mode
-            else (self.filename if self.filename else ""),
+            (
+                ""
+                if self.realisr_mode
+                else (self.filename if self.filename else "")
+            ),
         )
         self.settings.setValue("recent_files", self.recent_files)
         if self.last_open_dir:
@@ -7038,12 +7040,8 @@ class LabelingWidget(LabelDialog):
             )
             if not accepted:
                 return
-            attribute = (
-                "text" if selected == display_attributes[0] else "face"
-            )
-        default_path = dirpath or self.settings.value(
-            "last_realisr_dir", "."
-        )
+            attribute = "text" if selected == display_attributes[0] else "face"
+        default_path = dirpath or self.settings.value("last_realisr_dir", ".")
         if dirpath is None:
             dirpath = QtWidgets.QFileDialog.getExistingDirectory(
                 self,
@@ -7076,6 +7074,9 @@ class LabelingWidget(LabelDialog):
         self.realisr_reveal_text = False
         self._realisr_empty_confirmed.clear()
         self._realisr_completion_notified.clear()
+        self._realisr_hr_dirty = False
+        self._realisr_hr_sync_dirty = False
+        self._realisr_draft_dirty = False
         self.settings.setValue("last_realisr_dir", str(dataset.root))
 
         if self.compare_view_manager.is_active():
@@ -7102,9 +7103,7 @@ class LabelingWidget(LabelDialog):
         self.thumbnail_container.hide()
         self.file_search.setEnabled(False)
         instruction = (
-            self.tr(
-                "Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR"
-            )
+            self.tr("Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR")
             if dataset.attribute == "face"
             else self.tr(
                 "Real-ISR: edit text regions in HR; assign 0/1/2 in LR"
@@ -7158,6 +7157,9 @@ class LabelingWidget(LabelDialog):
             self.realisr_sample = None
             self.realisr_variant = "HR"
             self.realisr_reveal_text = False
+            self._realisr_hr_dirty = False
+            self._realisr_hr_sync_dirty = False
+            self._realisr_draft_dirty = False
             self.filename = None
             self.image_path = None
             self.image_data = None
@@ -7257,15 +7259,16 @@ class LabelingWidget(LabelDialog):
             self.realisr_sample = sample
             self.realisr_workspace.load_group(pixmaps, shapes)
             if self.realisr_dataset.attribute == "face":
-                self.realisr_workspace.canvases[
-                    "HR"
-                ].create_mode = "rectangle"
+                self.realisr_workspace.canvases["HR"].create_mode = "rectangle"
             self.file_list_widget.blockSignals(True)
             self.file_list_widget.setCurrentRow(
                 self.realisr_dataset.samples.index(sample)
             )
             self.file_list_widget.blockSignals(False)
             self.dirty = sample in self.realisr_dataset.drafts
+            self._realisr_hr_dirty = False
+            self._realisr_hr_sync_dirty = False
+            self._realisr_draft_dirty = False
         finally:
             self._realisr_loading = False
         self.realisr_workspace.set_active_variant(variant)
@@ -7289,6 +7292,7 @@ class LabelingWidget(LabelDialog):
             not self._realisr_loading
             and previous_variant == "HR"
             and variant != "HR"
+            and self._realisr_hr_dirty
             and not self.flush_realisr_draft()
         ):
             self.realisr_variant = "HR"
@@ -7333,32 +7337,34 @@ class LabelingWidget(LabelDialog):
             for shape in self.canvas.selected_shapes
         }
         self._no_selection_slot = True
-        self.label_list.clear()
-        for shape in self.canvas.shapes:
-            if self.realisr_variant == "HR":
-                self.add_label(
-                    shape,
-                    update_last_label=False,
-                    refresh_filters=False,
-                )
-                self.apply_realisr_shape_color(shape)
-                item = self.label_list.find_item_by_shape(shape)
-                if item is not None:
-                    color = shape.fill_color.getRgb()[:3]
-                    item.setBackground(
-                        QtGui.QColor(*color, LABEL_OPACITY)
+        self.label_list.setUpdatesEnabled(False)
+        try:
+            self.label_list.clear()
+            for shape in self.canvas.shapes:
+                if self.realisr_variant == "HR":
+                    self.add_label(
+                        shape,
+                        update_last_label=False,
+                        refresh_filters=False,
                     )
-            else:
-                item = LabelListWidgetItem(
-                    self._realisr_region_id(shape) or "", shape
-                )
-                self.label_list.add_iem(item)
-                _set_label_list_item_lock(item, False)
-            if self._realisr_region_id(shape) in selected_ids:
-                item = self.label_list.find_item_by_shape(shape)
-                if item is not None:
-                    self.label_list.select_item(item)
-        self._no_selection_slot = False
+                    self.apply_realisr_shape_color(shape)
+                    item = self.label_list.find_item_by_shape(shape)
+                    if item is not None:
+                        color = shape.fill_color.getRgb()[:3]
+                        item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
+                else:
+                    item = LabelListWidgetItem(
+                        self._realisr_region_id(shape) or "", shape
+                    )
+                    self.label_list.add_iem(item)
+                    _set_label_list_item_lock(item, False)
+                if self._realisr_region_id(shape) in selected_ids:
+                    item = self.label_list.find_item_by_shape(shape)
+                    if item is not None:
+                        self.label_list.select_item(item)
+        finally:
+            self.label_list.setUpdatesEnabled(True)
+            self._no_selection_slot = False
         self._refresh_shape_filters()
 
     def refresh_realisr_dependent_canvases(self):
@@ -7370,6 +7376,7 @@ class LabelingWidget(LabelDialog):
         }
         for variant in REALISR_VARIANTS[1:]:
             canvas = self.realisr_workspace.canvases[variant]
+            canvas.reset_shape_history()
             canvas.load_shapes(
                 [
                     self._shape_from_realisr_record(record, variant)
@@ -7378,6 +7385,7 @@ class LabelingWidget(LabelDialog):
                     )
                 ]
             )
+            self.realisr_workspace.rebuild_region_index(variant)
         self.realisr_workspace.set_lr_text_revealed(False)
         if selected_ids:
             self.realisr_workspace.select_region(
@@ -7396,32 +7404,43 @@ class LabelingWidget(LabelDialog):
             or not self.realisr_sample
         ):
             return True
+        if (
+            not self._realisr_hr_dirty
+            and not self._realisr_hr_sync_dirty
+            and not self._realisr_draft_dirty
+        ):
+            return True
         try:
-            records = self._realisr_canvas_records()
-            self.realisr_dataset.set_hr_records(
-                self.realisr_sample, records
-            )
-            normalized = self.realisr_dataset.records_for(
-                self.realisr_sample, "HR"
-            )
-            hr_canvas = self.realisr_workspace.canvases["HR"]
-            for shape, record in zip(hr_canvas.shapes, normalized):
-                shape.other_data["region_id"] = record["region_id"]
-                shape.other_data["recoverable"] = record["recoverable"]
-                self.apply_realisr_shape_color(shape)
-            self.refresh_realisr_dependent_canvases()
+            if self._realisr_hr_dirty:
+                records = self._realisr_canvas_records()
+                if self.realisr_dataset.set_hr_records(
+                    self.realisr_sample, records
+                ):
+                    self._realisr_hr_sync_dirty = True
+            if self._realisr_hr_sync_dirty:
+                normalized = self.realisr_dataset.records_for(
+                    self.realisr_sample, "HR"
+                )
+                hr_canvas = self.realisr_workspace.canvases["HR"]
+                for shape, record in zip(hr_canvas.shapes, normalized):
+                    shape.other_data["region_id"] = record["region_id"]
+                    shape.other_data["recoverable"] = record["recoverable"]
+                    self.apply_realisr_shape_color(shape)
+                self.realisr_workspace.rebuild_region_index("HR")
+                self.refresh_realisr_dependent_canvases()
+                self._realisr_hr_sync_dirty = False
             self.realisr_dataset.save_draft()
             if any(
-                self.realisr_dataset.missing_counts(
-                    self.realisr_sample
-                )[variant]
+                self.realisr_dataset.missing_counts(self.realisr_sample)[
+                    variant
+                ]
                 for variant in REALISR_VARIANTS[1:]
             ):
-                self._realisr_completion_notified.discard(
-                    self.realisr_sample
-                )
-            self.refresh_realisr_file_list()
+                self._realisr_completion_notified.discard(self.realisr_sample)
+            self.refresh_realisr_file_item(self.realisr_sample)
             self.update_realisr_ui()
+            self._realisr_hr_dirty = False
+            self._realisr_draft_dirty = False
             return True
         except Exception as exc:
             logger.exception("Could not save Real-ISR draft")
@@ -7443,16 +7462,19 @@ class LabelingWidget(LabelDialog):
         region_id = self._realisr_region_id(shape)
         if not region_id:
             return
-        self.realisr_dataset.set_recoverable(
+        changed = self.realisr_dataset.set_recoverable(
             self.realisr_sample, self.realisr_variant, region_id, value
         )
+        if not changed:
+            return
         shape.other_data["recoverable"] = value
         self.apply_realisr_shape_color(shape)
         self.dirty = True
+        self._realisr_draft_dirty = True
         self.actions.save.setEnabled(True)
         self.realisr_draft_timer.start()
         self.update_realisr_ui()
-        self.refresh_realisr_file_list()
+        self.refresh_realisr_file_item(self.realisr_sample)
 
         shapes = self.canvas.shapes
         current_index = shapes.index(shape)
@@ -7543,9 +7565,7 @@ class LabelingWidget(LabelDialog):
                 QtGui.QColor(color.red(), color.green(), color.blue(), 55)
             )
         if self.realisr_mode:
-            self.realisr_workspace.canvases[
-                self.realisr_variant
-            ].update()
+            self.realisr_workspace.canvases[self.realisr_variant].update()
 
     def refresh_realisr_label_display(self):
         if not self.realisr_mode:
@@ -7553,9 +7573,7 @@ class LabelingWidget(LabelDialog):
         if self.realisr_dataset.attribute != "text":
             self.realisr_reveal_text = False
             return
-        self.realisr_workspace.set_lr_text_revealed(
-            self.realisr_reveal_text
-        )
+        self.realisr_workspace.set_lr_text_revealed(self.realisr_reveal_text)
         if self.realisr_variant == "HR":
             return
         for shape in self.canvas.shapes:
@@ -7580,12 +7598,8 @@ class LabelingWidget(LabelDialog):
     def update_realisr_ui(self):
         if not self.realisr_mode or not self.realisr_sample:
             return
-        records = self.realisr_dataset.records_for(
+        total, complete = self.realisr_dataset.variant_progress(
             self.realisr_sample, self.realisr_variant
-        )
-        complete = sum(
-            record.get("recoverable") in (0, 1, 2)
-            for record in records
         )
         hint = (
             self.tr("; hold R to reveal text")
@@ -7595,7 +7609,7 @@ class LabelingWidget(LabelDialog):
         )
         self.realisr_progress.setText(
             self.tr("%s: %d/%d completed%s")
-            % (self.realisr_variant, complete, len(records), hint)
+            % (self.realisr_variant, complete, total, hint)
         )
         selected_value = None
         if len(self.canvas.selected_shapes) == 1:
@@ -7653,27 +7667,43 @@ class LabelingWidget(LabelDialog):
                 item = self.file_list_widget.item(row)
                 if item is None:
                     continue
-                group = self.realisr_dataset.group(sample)
-                progress = []
-                for variant in REALISR_VARIANTS:
-                    total = len(group[variant])
-                    complete = sum(
-                        record.get("recoverable") in (0, 1, 2)
-                        for record in group[variant]
-                    )
-                    progress.append(
-                        f"{short_names[variant]}:{complete}/{total}"
-                    )
-                item.setText(f"{sample}  [{' '.join(progress)}]")
-                item.setData(Qt.ItemDataRole.UserRole, sample)
-                item.setIcon(
-                    self.file_status_icons[
-                        self.realisr_dataset.is_complete(sample, formal=True)
-                    ]
-                )
+                self._update_realisr_file_item(item, sample, short_names)
         finally:
             self.file_list_widget.blockSignals(False)
         self.update_realisr_ui()
+
+    def _update_realisr_file_item(self, item, sample, short_names=None):
+        short_names = short_names or {
+            "HR": "H",
+            "LR2": "2",
+            "LR3": "3",
+            "LR4": "4",
+        }
+        progress = []
+        for variant in REALISR_VARIANTS:
+            total, complete = self.realisr_dataset.variant_progress(
+                sample, variant
+            )
+            progress.append(f"{short_names[variant]}:{complete}/{total}")
+        item.setText(f"{sample}  [{' '.join(progress)}]")
+        item.setData(Qt.ItemDataRole.UserRole, sample)
+        item.setIcon(
+            self.file_status_icons[self.realisr_dataset.is_committed(sample)]
+        )
+
+    def refresh_realisr_file_item(self, sample):
+        if not self.realisr_mode or self.realisr_dataset is None:
+            return
+        try:
+            row = self.realisr_dataset.samples.index(sample)
+        except ValueError:
+            return
+        item = self.file_list_widget.item(row)
+        if item is None:
+            return
+        blocker = QtCore.QSignalBlocker(self.file_list_widget)
+        self._update_realisr_file_item(item, sample)
+        del blocker
 
     def apply_realisr_action_state(self):
         if not self.realisr_mode:
@@ -7735,9 +7765,7 @@ class LabelingWidget(LabelDialog):
                 self.tr("The current group was not committed."),
             )
             return False
-        records = self.realisr_dataset.records_for(
-            self.realisr_sample, "HR"
-        )
+        records = self.realisr_dataset.records_for(self.realisr_sample, "HR")
         if (
             not records
             and self.realisr_sample not in self._realisr_empty_confirmed
@@ -7745,20 +7773,23 @@ class LabelingWidget(LabelDialog):
             is_face = self.realisr_dataset.attribute == "face"
             answer = QMessageBox.question(
                 self,
-                self.tr("Confirm no faces")
-                if is_face
-                else self.tr("Confirm no text"),
-                self.tr(
-                    "HR has no face regions. Confirm that this image does "
-                    "not contain faces requiring annotation?"
-                )
-                if is_face
-                else self.tr(
-                    "HR has no text regions. Confirm that this image does "
-                    "not contain text requiring annotation?"
+                (
+                    self.tr("Confirm no faces")
+                    if is_face
+                    else self.tr("Confirm no text")
                 ),
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No,
+                (
+                    self.tr(
+                        "HR has no face regions. Confirm that this image does "
+                        "not contain faces requiring annotation?"
+                    )
+                    if is_face
+                    else self.tr(
+                        "HR has no text regions. Confirm that this image does "
+                        "not contain text requiring annotation?"
+                    )
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
@@ -7811,8 +7842,7 @@ class LabelingWidget(LabelDialog):
                     "%s\n\nCommit anyway?"
                 )
                 % preview,
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
@@ -8419,10 +8449,7 @@ class LabelingWidget(LabelDialog):
             self.set_dirty()
 
     def shape_text_changed(self):
-        if (
-            self.realisr_mode
-            and self.realisr_dataset.attribute == "face"
-        ):
+        if self.realisr_mode and self.realisr_dataset.attribute == "face":
             return
         description = self.shape_text_edit.toPlainText()
         if self.canvas.current is not None:
@@ -8435,10 +8462,7 @@ class LabelingWidget(LabelDialog):
 
     def set_text_editing(self, enable):
         """Set text editing."""
-        if (
-            self.realisr_mode
-            and self.realisr_dataset.attribute == "face"
-        ):
+        if self.realisr_mode and self.realisr_dataset.attribute == "face":
             enable = False
         if enable:
             # Enable text editing and set shape text from selected shape

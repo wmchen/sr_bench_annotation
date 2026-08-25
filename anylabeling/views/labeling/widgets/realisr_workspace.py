@@ -37,9 +37,7 @@ class RealISRCanvas(Canvas):
     def set_cross_line(self, show, width, color, opacity):
         """Apply crosshair settings without showing it in edit mode."""
         self._realisr_cross_line_enabled = show
-        super().set_cross_line(
-            show and self.drawing(), width, color, opacity
-        )
+        super().set_cross_line(show and self.drawing(), width, color, opacity)
 
     def mousePressEvent(self, event):
         self.activated.emit()
@@ -135,6 +133,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.zoom_factor = 1.0
         self._syncing_scroll = False
         self._syncing_selection = False
+        self._region_shape_indexes = {variant: {} for variant in VARIANTS}
 
         layout = QtWidgets.QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -161,9 +160,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
             canvas.recoverability_requested.connect(
                 self.recoverability_requested.emit
             )
-            canvas.reveal_text_changed.connect(
-                self.reveal_text_changed.emit
-            )
+            canvas.reveal_text_changed.connect(self.reveal_text_changed.emit)
 
             scroll_area = QtWidgets.QScrollArea()
             scroll_area.setWidget(canvas)
@@ -209,8 +206,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
             return
         changed = variant != self.active_variant
         self.active_variant = variant
-        self._update_active_style()
         if changed:
+            self._update_active_style()
             self.active_variant_changed.emit(variant)
         self.canvases[variant].setFocus(Qt.FocusReason.MouseFocusReason)
 
@@ -237,8 +234,20 @@ class RealISRWorkspace(QtWidgets.QWidget):
 
     def clear(self):
         self.images = {}
-        for canvas in self.canvases.values():
+        for variant, canvas in self.canvases.items():
             canvas.reset_state()
+            self._region_shape_indexes[variant] = {}
+
+    def rebuild_region_index(self, variant=None):
+        """Rebuild region lookups after a canvas shape collection changes."""
+        variants = VARIANTS if variant is None else (variant,)
+        for current_variant in variants:
+            index = {}
+            for shape in self.canvases[current_variant].shapes:
+                region_id = self._region_id(shape)
+                if region_id is not None:
+                    index[region_id] = shape
+            self._region_shape_indexes[current_variant] = index
 
     def load_group(self, pixmaps, shapes):
         self.images = dict(pixmaps)
@@ -255,6 +264,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 canvas.selected_shapes_copy = []
                 canvas.load_pixmap(pixmaps[variant])
                 canvas.load_shapes(shapes[variant])
+                self.rebuild_region_index(variant)
                 canvas.realisr_read_only = variant != "HR"
                 canvas.setEnabled(True)
                 canvas.set_editing(True)
@@ -268,7 +278,9 @@ class RealISRWorkspace(QtWidgets.QWidget):
     def fit_canvases(self):
         if not self.images:
             return
-        widths = [area.viewport().width() for area in self.scroll_areas.values()]
+        widths = [
+            area.viewport().width() for area in self.scroll_areas.values()
+        ]
         heights = [
             area.viewport().height() for area in self.scroll_areas.values()
         ]
@@ -360,19 +372,24 @@ class RealISRWorkspace(QtWidgets.QWidget):
         if self._syncing_selection:
             return
         self.set_active_variant(variant)
-        region_ids = {
+        region_ids = [
             self._region_id(shape)
             for shape in shapes
             if self._region_id(shape) is not None
-        }
+        ]
         self._syncing_selection = True
         try:
-            for canvas in self.canvases.values():
-                selected = []
-                for shape in canvas.shapes:
-                    shape.selected = self._region_id(shape) in region_ids
-                    if shape.selected:
-                        selected.append(shape)
+            for current_variant, canvas in self.canvases.items():
+                for shape in canvas.selected_shapes:
+                    shape.selected = False
+                index = self._region_shape_indexes[current_variant]
+                selected = [
+                    index[region_id]
+                    for region_id in region_ids
+                    if region_id in index
+                ]
+                for shape in selected:
+                    shape.selected = True
                 canvas.selected_shapes = selected
                 canvas.update()
         finally:
@@ -380,23 +397,24 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.selection_changed.emit(variant, list(shapes))
 
     def select_region(self, region_id, notify=True):
-        shapes = [
-            shape
-            for shape in self.active_canvas.shapes
-            if self._region_id(shape) == region_id
-        ]
+        shape = self._region_shape_indexes[self.active_variant].get(region_id)
+        shapes = [shape] if shape is not None else []
         if notify:
             self._selection_request(self.active_variant, shapes)
             return
-        region_ids = {region_id} if region_id is not None else set()
         self._syncing_selection = True
         try:
-            for canvas in self.canvases.values():
-                selected = []
-                for shape in canvas.shapes:
-                    shape.selected = self._region_id(shape) in region_ids
-                    if shape.selected:
-                        selected.append(shape)
+            for current_variant, canvas in self.canvases.items():
+                for old_shape in canvas.selected_shapes:
+                    old_shape.selected = False
+                selected_shape = self._region_shape_indexes[
+                    current_variant
+                ].get(region_id)
+                selected = (
+                    [selected_shape] if selected_shape is not None else []
+                )
+                for current_shape in selected:
+                    current_shape.selected = True
                 canvas.selected_shapes = selected
                 canvas.update()
         finally:
@@ -412,14 +430,13 @@ class RealISRWorkspace(QtWidgets.QWidget):
             return None
         region_shapes = {}
         for variant, canvas in self.canvases.items():
-            matches = [
-                shape
-                for shape in canvas.shapes
-                if self._region_id(shape) == region_id
-            ]
-            if len(matches) != 1:
+            shape = self._region_shape_indexes[variant].get(region_id)
+            # Canvas.shapes is intentionally public and a few integration
+            # paths replace or clear it directly.  Reject a stale cached entry
+            # rather than changing focus semantics.
+            if shape is None or shape not in canvas.shapes:
                 return None
-            region_shapes[variant] = matches[0]
+            region_shapes[variant] = shape
         return region_shapes
 
     def can_focus_selected_object(self):
@@ -468,22 +485,20 @@ class RealISRWorkspace(QtWidgets.QWidget):
             target_width = max(
                 1,
                 viewport.width()
-                - self.scroll_bars[variant][
-                    Qt.Orientation.Vertical
-                ].sizeHint().width(),
+                - self.scroll_bars[variant][Qt.Orientation.Vertical]
+                .sizeHint()
+                .width(),
             )
             target_height = max(
                 1,
                 viewport.height()
-                - self.scroll_bars[variant][
-                    Qt.Orientation.Horizontal
-                ].sizeHint().height(),
+                - self.scroll_bars[variant][Qt.Orientation.Horizontal]
+                .sizeHint()
+                .height(),
             )
             candidate = min(
                 target_width * coverage / (rectangle.width() * base_scale),
-                target_height
-                * coverage
-                / (rectangle.height() * base_scale),
+                target_height * coverage / (rectangle.height() * base_scale),
             )
             if not math.isfinite(candidate) or candidate <= 0:
                 return False
@@ -516,9 +531,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 horizontal = self.scroll_bars[variant][
                     Qt.Orientation.Horizontal
                 ]
-                vertical = self.scroll_bars[variant][
-                    Qt.Orientation.Vertical
-                ]
+                vertical = self.scroll_bars[variant][Qt.Orientation.Vertical]
                 horizontal.setValue(
                     round(center.x() * canvas.scale - viewport.width() / 2)
                 )

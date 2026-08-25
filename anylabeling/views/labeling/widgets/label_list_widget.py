@@ -174,6 +174,10 @@ class LabelListWidget(QtWidgets.QListView):
         self._selected_items = []
         self._ignore_mouse_move_selection = False
         self._preserved_selected_items = []
+        # Shape does not implement value equality, so object identity is the
+        # stable lookup key while a label model is alive.  Keeping this index
+        # avoids a linear model scan for every canvas selection change.
+        self._shape_item_index = {}
 
         self.setWindowFlags(Qt.WindowType.Window)
         self.setModel(StandardItemModel())
@@ -190,6 +194,9 @@ class LabelListWidget(QtWidgets.QListView):
         self.selectionModel().selectionChanged.connect(
             self.item_selection_changed_event
         )
+        self.model().rowsRemoved.connect(self._rebuild_shape_item_index)
+        self.model().modelReset.connect(self._rebuild_shape_item_index)
+        self.model().layoutChanged.connect(self._rebuild_shape_item_index)
 
     def __len__(self):
         return self.model().rowCount()
@@ -284,10 +291,19 @@ class LabelListWidget(QtWidgets.QListView):
         if not isinstance(item, LabelListWidgetItem):
             raise TypeError("item must be LabelListWidgetItem")
         self.model().setItem(self.model().rowCount(), 0, item)
+        shape = item.shape()
+        if shape is not None:
+            self._shape_item_index[id(shape)] = item
 
     def remove_item(self, item):
+        if item is None:
+            return
+        shape = item.shape()
+        if shape is not None:
+            self._shape_item_index.pop(id(shape), None)
         index = self.model().indexFromItem(item)
-        self.model().removeRows(index.row(), 1)
+        if index.isValid():
+            self.model().removeRows(index.row(), 1)
 
     def select_item(self, item):
         index = self.model().indexFromItem(item)
@@ -296,17 +312,23 @@ class LabelListWidget(QtWidgets.QListView):
         )
 
     def find_item_by_shape(self, shape):
-        for row in range(self.model().rowCount()):
-            item = self.model().item(row, 0)
-            if item.shape() == shape:
-                return item
-        # NOTE: Handle the case when the shape is not found
-        # This is a temporary solution to prevent a crash.
-        # Further investigation and a more robust fix are recommended.
+        if shape is None:
+            return None
+        item = self._shape_item_index.get(id(shape))
+        # Guard against a stale entry or a theoretically reused Python id.
+        if item is not None and item.shape() is shape:
+            return item
         return None
-        # raise ValueError(f"cannot find shape: {shape}")
+
+    def _rebuild_shape_item_index(self, *_args):
+        self._shape_item_index = {
+            id(item.shape()): item
+            for item in self
+            if item is not None and item.shape() is not None
+        }
 
     def clear(self):
+        self._shape_item_index.clear()
         self.model().clear()
 
     def item_at_index(self, index):

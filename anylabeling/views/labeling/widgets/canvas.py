@@ -133,6 +133,10 @@ class Canvas(
         self.auto_labeling_mode: AutoLabelingMode = None
         self.shapes = []
         self.shapes_backups = []
+        self._history_states = {}
+        self._history_order = []
+        self._history_commands = []
+        self._history_initialized = False
         self.current = None
         self.selected_shapes = []  # save the selected shapes here
         self.selected_shapes_copy = []
@@ -382,13 +386,98 @@ class Canvas(
         self._create_mode = value
 
     def store_shapes(self):
-        """Store shapes for restoring later (Undo feature)"""
-        shapes_backup = []
+        """Record an incremental checkpoint for restoring later."""
+        seen_ids = set()
         for shape in self.shapes:
-            shapes_backup.append(shape.copy())
-        if len(self.shapes_backups) > self.num_backups:
-            self.shapes_backups = self.shapes_backups[-self.num_backups - 1 :]
-        self.shapes_backups.append(shapes_backup)
+            if shape._history_id in seen_ids:
+                shape.reset_history_id()
+            seen_ids.add(shape._history_id)
+
+        current_order = [shape._history_id for shape in self.shapes]
+        current_by_id = {shape._history_id: shape for shape in self.shapes}
+        if not self._history_initialized:
+            self._history_states = {
+                history_id: shape.history_copy()
+                for history_id, shape in current_by_id.items()
+            }
+            self._history_order = current_order
+            self.shapes_backups = [None]
+            self._history_initialized = True
+            return False
+
+        previous_ids = set(self._history_states)
+        current_ids = set(current_by_id)
+        added = current_ids - previous_ids
+        deleted = previous_ids - current_ids
+        changed = {
+            history_id
+            for history_id in current_ids & previous_ids
+            if not self._history_shape_equal(
+                current_by_id[history_id], self._history_states[history_id]
+            )
+        }
+        if (
+            not added
+            and not deleted
+            and not changed
+            and current_order == self._history_order
+        ):
+            return False
+
+        command = {
+            "before": {
+                history_id: self._history_states[history_id]
+                for history_id in changed | deleted
+            },
+            "added": set(added),
+            "before_order": list(self._history_order),
+        }
+        for history_id in deleted:
+            self._history_states.pop(history_id, None)
+        for history_id in changed | added:
+            self._history_states[history_id] = current_by_id[
+                history_id
+            ].history_copy()
+        self._history_order = current_order
+        self._history_commands.append(command)
+        if len(self._history_commands) > self.num_backups:
+            self._history_commands = self._history_commands[
+                -self.num_backups :
+            ]
+        self.shapes_backups = [None] * (len(self._history_commands) + 1)
+        return True
+
+    @staticmethod
+    def _history_shape_equal(shape, stored):
+        return (
+            shape.to_dict() == stored.to_dict()
+            and shape.visible == stored.visible
+            and shape.is_closed() == stored.is_closed()
+        )
+
+    def _shape_differs_from_history(self, shape):
+        stored = self._history_states.get(shape._history_id)
+        return stored is None or not self._history_shape_equal(shape, stored)
+
+    def discard_last_history(self):
+        """Discard the latest checkpoint after its live change was reverted."""
+        if not self._history_commands:
+            return False
+        command = self._history_commands.pop()
+        for history_id in command["added"]:
+            self._history_states.pop(history_id, None)
+        self._history_states.update(command["before"])
+        self._history_order = command["before_order"]
+        self.shapes_backups = [None] * (len(self._history_commands) + 1)
+        return True
+
+    def reset_shape_history(self):
+        """Clear undo commands before loading an independent document."""
+        self.shapes_backups = []
+        self._history_states = {}
+        self._history_order = []
+        self._history_commands = []
+        self._history_initialized = False
 
     def store_moving_shape(self):
         """Store a moving shape"""
@@ -400,13 +489,7 @@ class Canvas(
             )
             for shape in moving_shapes:
                 if shape in self.shapes:
-                    index = self.shapes.index(shape)
-                    if (
-                        len(self.shapes_backups) > 0
-                        and index < len(self.shapes_backups[-1])
-                        and self.shapes_backups[-1][index].points
-                        != self.shapes[index].points
-                    ):
+                    if self._shape_differs_from_history(shape):
                         self.store_shapes()
                         self.shape_moved.emit()
                         break
@@ -498,9 +581,7 @@ class Canvas(
         # We save the state AFTER each edit (not before) so for an
         # edit to be undoable, we expect the CURRENT and the PREVIOUS state
         # to be in the undo stack.
-        if len(self.shapes_backups) < 2:
-            return False
-        return True
+        return bool(self._history_commands)
 
     def restore_shape(self):
         """Restore/Undo a shape"""
@@ -509,12 +590,22 @@ class Canvas(
         # and app.py::load_shapes and our own Canvas::load_shapes function.
         if not self.is_shape_restorable:
             return
-        self.shapes_backups.pop()  # latest
-
-        # The application will eventually call Canvas.load_shapes which will
-        # push this right back onto the stack.
-        shapes_backup = self.shapes_backups.pop()
-        self.shapes = shapes_backup
+        command = self._history_commands.pop()
+        current_by_id = {shape._history_id: shape for shape in self.shapes}
+        for history_id in command["added"]:
+            current_by_id.pop(history_id, None)
+            self._history_states.pop(history_id, None)
+        for history_id, before_shape in command["before"].items():
+            restored = before_shape.history_copy()
+            current_by_id[history_id] = restored
+            self._history_states[history_id] = before_shape
+        self._history_order = command["before_order"]
+        self.shapes = [
+            current_by_id[history_id]
+            for history_id in self._history_order
+            if history_id in current_by_id
+        ]
+        self.shapes_backups = [None] * (len(self._history_commands) + 1)
         self.selected_shapes = []
         self._selected_group_id = None
         self._hovered_group_id = None
@@ -546,6 +637,7 @@ class Canvas(
 
     def _shape_hit_candidates(self, point):
         """Return shapes under a point in interaction priority order."""
+        Shape.begin_geometry_batch()
         candidates = []
         epsilon = self.epsilon / self.scale
         for stack_index, shape in enumerate(self.shapes):
@@ -554,6 +646,15 @@ class Canvas(
 
             rect = shape.bounding_rect()
             area = max(0.0, rect.width()) * max(0.0, rect.height())
+            hit_margin = epsilon * (
+                3.0
+                if shape.shape_type in ["point", "line", "linestrip"]
+                else 1.0
+            )
+            if not rect.adjusted(
+                -hit_margin, -hit_margin, hit_margin, hit_margin
+            ).contains(point):
+                continue
             vertex_distance = None
             if not shape.locked:
                 if shape.shape_type == "cuboid" and len(shape.points) == 8:
@@ -618,6 +719,7 @@ class Canvas(
                 candidates.append((priority, shape))
 
         candidates.sort(key=lambda item: item[0])
+        Shape.end_geometry_batch()
         return [shape for _, shape in candidates]
 
     def drawing(self):
@@ -1846,18 +1948,12 @@ class Canvas(
             self.rotating_shape = True
             self.h_shape = shape
             self.h_rotation_shape = shape
-            self.repaint()
+            self.update()
 
     def _store_rotated_shape(self, shape):
         if shape is None or shape not in self.shapes:
             return
-        index = self.shapes.index(shape)
-        if (
-            self.shapes_backups
-            and index < len(self.shapes_backups[-1])
-            and self.shapes_backups[-1][index].points
-            != self.shapes[index].points
-        ):
+        if self._shape_differs_from_history(shape):
             self.store_shapes()
             self.shape_rotated.emit()
 
@@ -1948,7 +2044,7 @@ class Canvas(
             Qt.Orientation.Vertical,
             1,
         )
-        self.repaint()
+        self.update()
         return True
 
     # QT Overload
@@ -1988,7 +2084,7 @@ class Canvas(
             self.override_cursor(CURSOR_DRAW)
             if self._magic_wand_active and self._left_button_pressed(ev):
                 self._drag_magic_wand(ev.position())
-            self.repaint()
+            self.update()
             return
 
         if (
@@ -2001,13 +2097,13 @@ class Canvas(
             if QtCore.Qt.MouseButton.LeftButton & ev.buttons():
                 self._vertex_erasing = True
                 self.erase_selected_vertex_at(pos)
-                self.repaint()
+                self.update()
             ev.accept()
             return
 
         prev_hover_shape = self.h_shape
         self.prev_move_point = pos
-        self.repaint()
+        self.update()
 
         # Handle auto decode mode
         if (
@@ -2110,7 +2206,6 @@ class Canvas(
                 if point_dist * self.scale >= self.brush_point_distance:
                     self.current.add_point(pos)
                     self.line[0] = self.current[-1]
-            self.repaint()
             self.current.highlight_clear()
             return
 
@@ -2119,12 +2214,10 @@ class Canvas(
             if self.selected_shapes_copy and self.prev_point:
                 self.override_cursor(CURSOR_MOVE)
                 self.bounded_move_shapes(self.selected_shapes_copy, pos)
-                self.repaint()
             elif self.selected_shapes:
                 self.selected_shapes_copy = [
                     s.copy() for s in self.selected_shapes
                 ]
-                self.repaint()
             return
 
         if self._rotation_drag_shape is not None:
@@ -2142,7 +2235,6 @@ class Canvas(
                 self.is_move_editing = False
                 try:
                     self.bounded_move_vertex(pos)
-                    self.repaint()
                     self.moving_shape = True
                 except IndexError:
                     return
@@ -2173,7 +2265,6 @@ class Canvas(
                     self.h_shape, self.h_cuboid_face, offset
                 )
                 self.prev_point = pos
-                self.repaint()
                 self.moving_shape = True
                 p1 = self.h_shape[0]
                 p2 = self.h_shape[2]
@@ -2189,7 +2280,6 @@ class Canvas(
                     return
                 self.override_cursor(CURSOR_MOVE)
                 self.bounded_move_shapes(self.selected_shapes, pos)
-                self.repaint()
                 self.moving_shape = True
                 if self.selected_shapes[-1].shape_type == "rectangle":
                     p1 = self.selected_shapes[-1][0]
@@ -2224,7 +2314,6 @@ class Canvas(
                         Qt.Orientation.Vertical,
                         1,
                     )
-                    self.repaint()
             return
 
         if self.editing() and self.is_move_editing:
@@ -2233,7 +2322,6 @@ class Canvas(
                 self.h_cuboid_face = None
                 try:
                     self.bounded_move_vertex(pos)
-                    self.repaint()
                     self.moving_shape = True
                 except IndexError:
                     return
@@ -2263,7 +2351,6 @@ class Canvas(
                     self.h_shape, self.h_cuboid_face, offset
                 )
                 self.prev_point = pos
-                self.repaint()
                 self.moving_shape = True
                 p1 = self.h_shape[0]
                 p2 = self.h_shape[2]
@@ -2532,8 +2619,8 @@ class Canvas(
         self._pending_edge_point = None
         shape.remove_point(index)
         shape.highlight_clear()
-        if len(self.shapes_backups) >= 2 and shape in self.shapes:
-            self.shapes_backups.pop()
+        if self.is_shape_restorable and shape in self.shapes:
+            self.discard_last_history()
 
     def remove_selected_point(self):
         """Remove a point from current shape"""
@@ -2764,7 +2851,7 @@ class Canvas(
                     self.erase_selected_vertex_at(pos)
                     self.prev_point = pos
                     self.prev_pan_point = ev.position()
-                    self.repaint()
+                    self.update()
                     ev.accept()
                     return
                 rotation_handle_shape = self._rotation_handle_shape_at(pos)
@@ -2781,7 +2868,7 @@ class Canvas(
                     )
                     self.prev_point = pos
                     self.prev_pan_point = ev.position()
-                    self.repaint()
+                    self.update()
                     ev.accept()
                     return
                 if self.selected_edge():
@@ -2823,7 +2910,7 @@ class Canvas(
                 )
                 self.prev_point = pos
                 self.prev_pan_point = ev.position()
-                self.repaint()
+                self.update()
         elif (
             ev.button() == QtCore.Qt.MouseButton.RightButton and self.editing()
         ):
@@ -2837,7 +2924,7 @@ class Canvas(
                 self.select_shape_point(
                     pos, multiple_selection_mode=group_mode
                 )
-                self.repaint()
+                self.update()
             self.prev_point = pos
 
     # QT Overload
@@ -2879,7 +2966,7 @@ class Canvas(
             ):
                 # Cancel the move by deleting the shadow copy.
                 self.selected_shapes_copy = []
-                self.repaint()
+                self.update()
         elif ev.button() == QtCore.Qt.MouseButton.LeftButton:
             if self._rotation_drag_shape is not None:
                 self._finish_rotation_handle_drag()
@@ -2916,7 +3003,7 @@ class Canvas(
             for i, shape in enumerate(self.selected_shapes_copy):
                 self.selected_shapes[i].points = shape.points
         self.selected_shapes_copy = []
-        self.repaint()
+        self.update()
         self.store_shapes()
         return True
 
@@ -3935,6 +4022,39 @@ class Canvas(
         painter.restore()
 
     # QT Overload
+    def _visible_shapes_for_paint(self, event):
+        """Return shapes whose geometry intersects the exposed image area."""
+        if self.scale <= 0:
+            return self.shapes
+        exposed = QtCore.QRectF(event.rect())
+        offset = self.offset_to_center()
+        image_rect = QtCore.QRectF(
+            exposed.x() / self.scale - offset.x(),
+            exposed.y() / self.scale - offset.y(),
+            exposed.width() / self.scale,
+            exposed.height() / self.scale,
+        )
+        # Include selection handles, line width and rotation handles. Text and
+        # linking retain their existing full traversal below because their
+        # decoration can extend arbitrarily beyond a shape bounding box.
+        margin = (
+            ROTATION_HANDLE_DISTANCE
+            + ROTATION_HANDLE_HIT_RADIUS
+            + Shape.point_size
+            + Shape.line_width
+        ) / max(self.scale, 1e-6)
+        image_rect = image_rect.adjusted(-margin, -margin, margin, margin)
+        if image_rect.contains(QtCore.QRectF(self.pixmap.rect())):
+            return self.shapes
+        visible = []
+        for shape in self.shapes:
+            bounds = shape.bounding_rect()
+            if bounds.intersects(image_rect) or image_rect.contains(
+                bounds.center()
+            ):
+                visible.append(shape)
+        return visible
+
     def paintEvent(self, event):  # noqa: C901
         """Paint event for canvas"""
         if (
@@ -3974,6 +4094,8 @@ class Canvas(
                 )
 
         Shape.scale = self.scale
+        Shape.begin_geometry_batch()
+        visible_shapes = self._visible_shapes_for_paint(event)
 
         # Draw loading/waiting screen
         if self.is_loading:
@@ -4004,6 +4126,7 @@ class Canvas(
                 self.loading_text,
             )
             p.end()
+            Shape.end_geometry_batch()
             self.update()
             return
 
@@ -4075,7 +4198,7 @@ class Canvas(
 
         # Draw shape masks
         if self.show_masks:
-            for shape in self.shapes:
+            for shape in visible_shapes:
                 if not shape.visible:
                     continue
                 # Shapes under live brush editing render their own overlay.
@@ -4108,43 +4231,7 @@ class Canvas(
                 ):
                     continue
 
-                mask_path = QtGui.QPainterPath()
-                if shape.shape_type == "polygon":
-                    mask_path.moveTo(shape.points[0])
-                    for point in shape.points[1:]:
-                        mask_path.lineTo(point)
-                    if shape.is_closed() or len(shape.points) >= 3:
-                        mask_path.closeSubpath()
-                elif shape.shape_type == "rectangle":
-                    if len(shape.points) == 2:
-                        rectangle = shape.get_rect_from_line(*shape.points)
-                        mask_path.addRect(rectangle)
-                    elif len(shape.points) == 4:
-                        mask_path.moveTo(shape.points[0])
-                        for point in shape.points[1:]:
-                            mask_path.lineTo(point)
-                        mask_path.closeSubpath()
-                elif shape.shape_type == "rotation":
-                    if len(shape.points) == 2:
-                        rectangle = shape.get_rect_from_line(*shape.points)
-                        mask_path.addRect(rectangle)
-                    elif len(shape.points) == 4:
-                        mask_path.moveTo(shape.points[0])
-                        for point in shape.points[1:]:
-                            mask_path.lineTo(point)
-                        mask_path.closeSubpath()
-                elif shape.shape_type == "quadrilateral":
-                    if len(shape.points) == 4:
-                        mask_path.moveTo(shape.points[0])
-                        for point in shape.points[1:]:
-                            mask_path.lineTo(point)
-                        mask_path.closeSubpath()
-                elif shape.shape_type == "circle":
-                    if len(shape.points) == 2:
-                        rectangle = shape.get_circle_rect_from_line(
-                            shape.points
-                        )
-                        mask_path.addEllipse(rectangle)
+                mask_path = shape.make_mask_path()
 
                 fill_color = (
                     shape.select_line_color
@@ -4178,7 +4265,7 @@ class Canvas(
                 p.drawPath(mask_path)
 
         # Draw degrees
-        for shape in self.shapes:
+        for shape in visible_shapes:
             if (
                 shape.selected or not self._hide_backround
             ) and self.is_visible(shape):
@@ -4737,6 +4824,7 @@ class Canvas(
         self._paint_brush_cursor(p)
 
         p.end()
+        Shape.end_geometry_batch()
 
     def render_visualization(
         self,
@@ -5197,7 +5285,7 @@ class Canvas(
             self.bounded_move_shapes(
                 self.selected_shapes, self.prev_point + offset
             )
-            self.repaint()
+            self.update()
             self.moving_shape = True
 
     def rotate_by_keyboard(self, theta):
@@ -5209,7 +5297,7 @@ class Canvas(
                     self.bounded_rotate_shapes(i, shape, theta)
                     rotating_shape = True
             if rotating_shape:
-                self.repaint()
+                self.update()
                 self.rotating_shape = True
 
     # QT Overload
@@ -5334,13 +5422,7 @@ class Canvas(
                 and self.selected_shapes
                 and self.selected_shapes[0] in self.shapes
             ):
-                index = self.shapes.index(self.selected_shapes[0])
-                if (
-                    self.shapes_backups
-                    and index < len(self.shapes_backups[-1])
-                    and self.shapes_backups[-1][index].points
-                    != self.shapes[index].points
-                ):
+                if self._shape_differs_from_history(self.selected_shapes[0]):
                     self.store_shapes()
                     if self.moving_shape:
                         self.shape_moved.emit()
@@ -5349,7 +5431,6 @@ class Canvas(
 
                 if self.moving_shape:
                     self.moving_shape = False
-                    self.update()
                 if self.rotating_shape:
                     self.rotating_shape = False
 
@@ -5362,7 +5443,7 @@ class Canvas(
             self.shapes[-1].label = text
         self.shapes[-1].flags = flags
         self.shapes[-1].group_id = group_id
-        self.shapes_backups.pop()
+        self.discard_last_history()
         self.store_shapes()
         return self.shapes[-1]
 
@@ -5461,7 +5542,7 @@ class Canvas(
         self._clear_space_pan_state()
         self.restore_cursor()
         self.pixmap = None
-        self.shapes_backups = []
+        self.reset_shape_history()
         self.is_move_editing = False
         self.compare_pixmap = None
         self._selected_group_id = None

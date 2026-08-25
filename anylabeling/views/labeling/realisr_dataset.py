@@ -19,7 +19,6 @@ from pathlib import Path
 
 from anylabeling.app_info import __version__
 
-
 VARIANTS = ("HR", "LR2", "LR3", "LR4")
 SCALE_FACTORS = {"HR": 1, "LR2": 2, "LR3": 3, "LR4": 4}
 IMAGE_EXTENSIONS = {
@@ -182,9 +181,9 @@ def scale_points(points, source_size, target_size):
 
 
 def _json_bytes(payload):
-    return (
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    ).encode("utf-8")
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode(
+        "utf-8"
+    )
 
 
 class RealISRDataset:
@@ -214,6 +213,11 @@ class RealISRDataset:
         self._load_draft()
         self._remove_stale_committed_backups()
         self.bind_attribute()
+        self._draft_revision = 0
+        self._saved_draft_revision = 0
+        self._sample_stats_cache = {}
+        self._dashboard_stats_cache = {}
+        self._rebuild_dashboard_stats_cache()
 
     def _validate_attribute_binding(self):
         path = self.annotation_root / METADATA_FILENAME
@@ -225,9 +229,10 @@ class RealISRDataset:
             raise RealISRDatasetError(
                 f"Invalid Real-ISR metadata: {path}"
             ) from exc
-        if not isinstance(payload, dict) or payload.get(
-            "schema_version"
-        ) not in SUPPORTED_SCHEMA_VERSIONS:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS
+        ):
             raise RealISRDatasetError(
                 f"Unsupported Real-ISR metadata schema: {path}"
             )
@@ -261,8 +266,7 @@ class RealISRDataset:
             file_sets[variant] = {
                 path.name
                 for path in directory.iterdir()
-                if path.is_file()
-                and path.suffix.lower() in IMAGE_EXTENSIONS
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
             }
         if errors:
             raise RealISRDatasetError("\n".join(errors))
@@ -276,13 +280,9 @@ class RealISRDataset:
             missing = sorted(reference - file_sets[variant], key=_natural_key)
             extra = sorted(file_sets[variant] - reference, key=_natural_key)
             if missing:
-                errors.append(
-                    f"{variant} missing: {', '.join(missing[:12])}"
-                )
+                errors.append(f"{variant} missing: {', '.join(missing[:12])}")
             if extra:
-                errors.append(
-                    f"{variant} extra: {', '.join(extra[:12])}"
-                )
+                errors.append(f"{variant} extra: {', '.join(extra[:12])}")
         if errors:
             raise RealISRDatasetError("\n".join(errors))
 
@@ -317,8 +317,10 @@ class RealISRDataset:
             raise RealISRDatasetError("\n".join(errors[:40]))
 
     def _json_path(self, variant, sample):
-        return self.annotation_root / variant / (
-            f"{osp.splitext(sample)[0]}.json"
+        return (
+            self.annotation_root
+            / variant
+            / (f"{osp.splitext(sample)[0]}.json")
         )
 
     @staticmethod
@@ -331,7 +333,8 @@ class RealISRDataset:
         elif (
             migrate_misplaced_label
             and not record.get("description")
-            and record.get("label") not in (
+            and record.get("label")
+            not in (
                 None,
                 "",
                 DEFAULT_TEXT_LABEL,
@@ -348,7 +351,9 @@ class RealISRDataset:
     @staticmethod
     def _is_horizontal_rectangle(points):
         if len(points) == 2:
-            return points[0][0] != points[1][0] and points[0][1] != points[1][1]
+            return (
+                points[0][0] != points[1][0] and points[0][1] != points[1][1]
+            )
         if len(points) != 4:
             return False
         coordinates = {(float(point[0]), float(point[1])) for point in points}
@@ -402,11 +407,15 @@ class RealISRDataset:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise RealISRDatasetError(f"Invalid annotation JSON: {path}") from exc
+            raise RealISRDatasetError(
+                f"Invalid annotation JSON: {path}"
+            ) from exc
         if not isinstance(payload, dict) or not isinstance(
             payload.get("shapes"), list
         ):
-            raise RealISRDatasetError(f"Invalid annotation JSON schema: {path}")
+            raise RealISRDatasetError(
+                f"Invalid annotation JSON schema: {path}"
+            )
         image_path = payload.get("imagePath")
         if image_path and osp.basename(str(image_path)) != sample:
             raise RealISRDatasetError(
@@ -436,14 +445,16 @@ class RealISRDataset:
         needs_text_field_migration = realisr_schema_version == 1
         records = copy.deepcopy(payload["shapes"])
         records = [
-            self._normalize_record(
-                record,
-                migrate_misplaced_label=needs_text_field_migration,
-                strict=True,
-                path=path,
+            (
+                self._normalize_record(
+                    record,
+                    migrate_misplaced_label=needs_text_field_migration,
+                    strict=True,
+                    path=path,
+                )
+                if isinstance(record, dict)
+                else record
             )
-            if isinstance(record, dict)
-            else record
             for record in records
         ]
         return records
@@ -514,9 +525,11 @@ class RealISRDataset:
             if self.attribute == "text":
                 record.setdefault(
                     "shape_type",
-                    "quadrilateral"
-                    if len(record["points"]) == 4
-                    else "polygon",
+                    (
+                        "quadrilateral"
+                        if len(record["points"]) == 4
+                        else "polygon"
+                    ),
                 )
             elif not self._is_horizontal_rectangle(record["points"]):
                 raise RealISRDatasetError(
@@ -602,9 +615,7 @@ class RealISRDataset:
 
     def _initialize_records(self):
         for sample in self.samples:
-            hr = self._normalize_hr(
-                sample, self.formal["HR"].get(sample, [])
-            )
+            hr = self._normalize_hr(sample, self.formal["HR"].get(sample, []))
             group = {"HR": hr}
             for variant in VARIANTS[1:]:
                 group[variant] = self._synchronize_variant(
@@ -628,7 +639,9 @@ class RealISRDataset:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise RealISRDatasetError(f"Invalid Real-ISR draft: {path}") from exc
+            raise RealISRDatasetError(
+                f"Invalid Real-ISR draft: {path}"
+            ) from exc
         if (
             not isinstance(payload, dict)
             or payload.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS
@@ -653,14 +666,16 @@ class RealISRDataset:
                 continue
             hr_source = group.get("HR", self.records[sample]["HR"])
             hr_source = [
-                self._normalize_record(
-                    copy.deepcopy(record),
-                    migrate_misplaced_label=needs_text_field_migration,
-                    strict=True,
-                    path=path,
+                (
+                    self._normalize_record(
+                        copy.deepcopy(record),
+                        migrate_misplaced_label=needs_text_field_migration,
+                        strict=True,
+                        path=path,
+                    )
+                    if isinstance(record, dict)
+                    else record
                 )
-                if isinstance(record, dict)
-                else record
                 for record in hr_source
             ]
             hr = self._normalize_hr(sample, hr_source)
@@ -669,13 +684,15 @@ class RealISRDataset:
                 variant_source = group.get(variant, [])
                 if self.attribute == "face":
                     variant_source = [
-                        self._normalize_record(
-                            copy.deepcopy(record),
-                            strict=True,
-                            path=path,
+                        (
+                            self._normalize_record(
+                                copy.deepcopy(record),
+                                strict=True,
+                                path=path,
+                            )
+                            if isinstance(record, dict)
+                            else record
                         )
-                        if isinstance(record, dict)
-                        else record
                         for record in variant_source
                     ]
                 restored[variant] = self._synchronize_variant(
@@ -697,46 +714,53 @@ class RealISRDataset:
         return copy.deepcopy(self.records[sample][variant])
 
     def set_hr_records(self, sample, records):
-        previous_group = copy.deepcopy(self.records[sample])
+        previous_group = self.records[sample]
         old_by_id = {
             record["region_id"]: record
-            for record in self.records[sample]["HR"]
+            for record in previous_group["HR"]
             if record.get("region_id")
         }
         used = set(old_by_id)
+        current_ids = set()
         normalized = []
         for source in records:
             record = copy.deepcopy(source)
             region_id = record.get("region_id")
-            current_ids = {item["region_id"] for item in normalized}
             if not region_id or region_id in current_ids:
                 region_id = self._new_region_id(sample, used | current_ids)
             used.add(region_id)
+            current_ids.add(region_id)
             previous = old_by_id.get(region_id, {})
             record["region_id"] = region_id
-            value = record.get(
-                "recoverable", previous.get("recoverable", 0)
-            )
+            value = record.get("recoverable", previous.get("recoverable", 0))
             record["recoverable"] = value if value in (0, 1, 2) else 0
             record.setdefault(
                 "label",
-                DEFAULT_FACE_LABEL
-                if self.attribute == "face"
-                else DEFAULT_TEXT_LABEL,
+                (
+                    DEFAULT_FACE_LABEL
+                    if self.attribute == "face"
+                    else DEFAULT_TEXT_LABEL
+                ),
             )
             record.setdefault("points", [])
             record.setdefault("difficult", previous.get("difficult", False))
             normalized.append(record)
-        self.records[sample]["HR"] = self._normalize_hr(sample, normalized)
+        hr_records = self._normalize_hr(sample, normalized)
+        updated_group = {"HR": hr_records}
         for variant in VARIANTS[1:]:
-            self.records[sample][variant] = self._synchronize_variant(
+            updated_group[variant] = self._synchronize_variant(
                 sample,
                 variant,
-                self.records[sample]["HR"],
-                self.records[sample].get(variant, []),
+                hr_records,
+                previous_group.get(variant, []),
             )
-        if self.records[sample] != previous_group:
-            self.mark_draft(sample)
+        if updated_group == previous_group:
+            return False
+        previous_stats = self._sample_stats_cache.get(sample)
+        self.records[sample] = updated_group
+        self.mark_draft(sample)
+        self._refresh_sample_stats(sample, previous_stats)
+        return True
 
     def set_recoverable(self, sample, variant, region_id, value):
         if variant not in VARIANTS:
@@ -745,14 +769,21 @@ class RealISRDataset:
             raise ValueError("recoverable must be 0, 1, or 2")
         for record in self.records[sample][variant]:
             if record.get("region_id") == region_id:
-                if record.get("recoverable") != value:
-                    record["recoverable"] = value
-                    self.mark_draft(sample)
-                return
+                if record.get("recoverable") == value:
+                    return False
+                previous_stats = self._sample_stats_cache.get(sample)
+                record["recoverable"] = value
+                self.mark_draft(sample)
+                self._refresh_sample_stats(sample, previous_stats)
+                return True
         raise KeyError(region_id)
 
     def mark_draft(self, sample):
-        self.drafts[sample] = copy.deepcopy(self.records[sample])
+        # records is already the authoritative in-memory draft.  Retaining the
+        # sample group by reference avoids copying all four variants after
+        # every recoverability click; JSON serialization snapshots it on save.
+        self.drafts[sample] = self.records[sample]
+        self._draft_revision += 1
 
     def missing_counts(self, sample):
         return {
@@ -808,7 +839,101 @@ class RealISRDataset:
                     return False
         return True
 
+    def _sample_dashboard_stats(self, sample):
+        group = self.records[sample]
+        lr_values = {
+            variant: {
+                record["region_id"]: record.get("recoverable")
+                for record in group[variant]
+            }
+            for variant in VARIANTS[1:]
+        }
+        return {
+            "instances": len(group["HR"]),
+            "completed_instances": sum(
+                all(
+                    lr_values[variant].get(record["region_id"]) in (0, 1, 2)
+                    for variant in VARIANTS[1:]
+                )
+                for record in group["HR"]
+            ),
+            "recoverability_assigned": sum(
+                record.get("recoverable") in (0, 1, 2)
+                for variant in VARIANTS[1:]
+                for record in group[variant]
+            ),
+            "recoverability_total": sum(
+                len(group[variant]) for variant in VARIANTS[1:]
+            ),
+            "committed_samples": int(self.is_complete(sample, formal=True)),
+        }
+
+    def _rebuild_dashboard_stats_cache(self):
+        self._sample_stats_cache = {
+            sample: self._sample_dashboard_stats(sample)
+            for sample in self.samples
+        }
+        self._dashboard_stats_cache = {
+            "sample_groups": len(self.samples),
+            "image_files": len(self.samples) * len(VARIANTS),
+            "instances": sum(
+                stats["instances"]
+                for stats in self._sample_stats_cache.values()
+            ),
+            "completed_instances": sum(
+                stats["completed_instances"]
+                for stats in self._sample_stats_cache.values()
+            ),
+            "recoverability_assigned": sum(
+                stats["recoverability_assigned"]
+                for stats in self._sample_stats_cache.values()
+            ),
+            "recoverability_total": sum(
+                stats["recoverability_total"]
+                for stats in self._sample_stats_cache.values()
+            ),
+            "committed_samples": sum(
+                stats["committed_samples"]
+                for stats in self._sample_stats_cache.values()
+            ),
+        }
+
+    def _refresh_sample_stats(self, sample, previous=None):
+        if not self._dashboard_stats_cache:
+            return
+        previous = (
+            previous
+            or self._sample_stats_cache.get(sample)
+            or {
+                key: 0
+                for key in (
+                    "instances",
+                    "completed_instances",
+                    "recoverability_assigned",
+                    "recoverability_total",
+                    "committed_samples",
+                )
+            }
+        )
+        current = self._sample_dashboard_stats(sample)
+        self._sample_stats_cache[sample] = current
+        for key, value in current.items():
+            self._dashboard_stats_cache[key] += value - previous[key]
+
+    def variant_progress(self, sample, variant):
+        records = self.records[sample][variant]
+        return len(records), sum(
+            record.get("recoverable") in (0, 1, 2) for record in records
+        )
+
+    def is_committed(self, sample):
+        return bool(self._sample_stats_cache[sample]["committed_samples"])
+
     def dashboard_stats(self):
+        return dict(self._dashboard_stats_cache)
+
+    def _dashboard_stats_uncached(self):
+        """Reference implementation retained for cache verification tests."""
         instances = 0
         completed_instances = 0
         assigned = 0
@@ -865,12 +990,15 @@ class RealISRDataset:
         }
 
     def save_draft(self):
+        if self._draft_revision == self._saved_draft_revision:
+            return False
         self.bind_attribute()
         path = self.annotation_root / DRAFT_FILENAME
         if not self.drafts:
             if path.exists():
                 path.unlink()
-            return
+            self._saved_draft_revision = self._draft_revision
+            return True
         _atomic_write(
             path,
             _json_bytes(
@@ -881,6 +1009,8 @@ class RealISRDataset:
                 }
             ),
         )
+        self._saved_draft_revision = self._draft_revision
+        return True
 
     def _document(self, sample, variant, records):
         width, height = self.dimensions[(variant, sample)]
@@ -931,15 +1061,16 @@ class RealISRDataset:
             )
 
     def commit_sample(self, sample):
+        previous_stats = self._sample_stats_cache.get(sample)
+        previous_draft_revision = self._draft_revision
+        previous_saved_revision = self._saved_draft_revision
         if not self.is_complete(sample):
             raise RealISRDatasetError(
                 f"Sample {sample} still has unset recoverability labels"
             )
         paths = {v: self._json_path(v, sample) for v in VARIANTS}
         payloads = {
-            v: _json_bytes(
-                self._document(sample, v, self.records[sample][v])
-            )
+            v: _json_bytes(self._document(sample, v, self.records[sample][v]))
             for v in VARIANTS
         }
         originals = {
@@ -977,6 +1108,7 @@ class RealISRDataset:
             )
         self.formal_json_samples.add(sample)
         self.drafts.pop(sample, None)
+        self._draft_revision += 1
         try:
             self.save_draft()
         except Exception:
@@ -991,10 +1123,13 @@ class RealISRDataset:
             self.formal = old_formal
             self.formal_json_samples = old_formal_json_samples
             self.drafts = old_drafts
+            self._draft_revision = previous_draft_revision
+            self._saved_draft_revision = previous_saved_revision
             raise
         # Backups protect the coordinated write above. Once all four JSON
         # files and the draft state are committed, they are obsolete and must
         # not accumulate beside formal annotations.
         cleanup_failures = self._remove_committed_backups(paths)
         self.backup_cleanup_failures = cleanup_failures
+        self._refresh_sample_stats(sample, previous_stats)
         return cleanup_failures
