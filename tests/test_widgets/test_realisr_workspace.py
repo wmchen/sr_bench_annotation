@@ -113,6 +113,131 @@ class RealISRWorkspaceTest(unittest.TestCase):
         for canvas in self.workspace.canvases.values():
             self.assertEqual(len(canvas.selected_shapes), 1)
 
+    def test_single_view_hides_other_panes_and_tracks_active_variant(self):
+        changes = []
+        self.workspace.single_view_changed.connect(changes.append)
+
+        self.assertTrue(self.workspace.show_single_view("LR2"))
+        self.app.processEvents()
+        self.app.processEvents()
+
+        self.assertTrue(self.workspace.is_single_view)
+        self.assertEqual(changes, [True])
+        self.assertTrue(self.workspace.panes["LR2"].isVisible())
+        item_index = self.workspace._layout.indexOf(
+            self.workspace.panes["LR2"]
+        )
+        self.assertEqual(
+            self.workspace._layout.getItemPosition(item_index),
+            (0, 0, 2, 2),
+        )
+        for variant in ("HR", "LR3", "LR4"):
+            self.assertFalse(self.workspace.panes[variant].isVisible())
+
+        self.workspace.set_active_variant("LR3")
+        self.app.processEvents()
+        self.assertTrue(self.workspace.panes["LR3"].isVisible())
+        self.assertFalse(self.workspace.panes["LR2"].isVisible())
+
+        self.assertTrue(self.workspace.show_tiled_views())
+        self.app.processEvents()
+        self.assertFalse(self.workspace.is_single_view)
+        self.assertEqual(changes, [True, False])
+        self.assertTrue(
+            all(pane.isVisible() for pane in self.workspace.panes.values())
+        )
+
+    def test_blank_double_click_enters_single_view_only_while_editing(self):
+        pixmaps, shapes = self.make_group(
+            "unused-region", include_shapes=False
+        )
+        self.workspace.load_group(pixmaps, shapes)
+        self.app.processEvents()
+
+        def double_click(canvas, position):
+            event = QtGui.QMouseEvent(
+                QtCore.QEvent.Type.MouseButtonDblClick,
+                position,
+                position,
+                QtCore.Qt.MouseButton.LeftButton,
+                QtCore.Qt.MouseButton.LeftButton,
+                QtCore.Qt.KeyboardModifier.NoModifier,
+            )
+            canvas.mouseDoubleClickEvent(event)
+
+        canvas = self.workspace.canvases["HR"]
+        double_click(canvas, QtCore.QPointF(20, 20))
+        self.assertTrue(self.workspace.is_single_view)
+
+        self.workspace.show_tiled_views()
+        lr_canvas = self.workspace.canvases["LR2"]
+        double_click(lr_canvas, QtCore.QPointF(20, 20))
+        self.assertTrue(self.workspace.is_single_view)
+        self.assertEqual(self.workspace.active_variant, "LR2")
+
+        self.workspace.show_tiled_views()
+        canvas.set_editing(False)
+        double_click(canvas, QtCore.QPointF(20, 20))
+        self.assertFalse(self.workspace.is_single_view)
+
+    def test_double_click_does_not_expand_selected_or_hit_shape(self):
+        canvas = self.workspace.canvases["HR"]
+
+        def double_click(position):
+            event = QtGui.QMouseEvent(
+                QtCore.QEvent.Type.MouseButtonDblClick,
+                position,
+                position,
+                QtCore.Qt.MouseButton.LeftButton,
+                QtCore.Qt.MouseButton.LeftButton,
+                QtCore.Qt.KeyboardModifier.NoModifier,
+            )
+            canvas.mouseDoubleClickEvent(event)
+
+        self.workspace.select_region("000001.png#0000", notify=False)
+        double_click(QtCore.QPointF(-100, -100))
+        self.assertFalse(self.workspace.is_single_view)
+
+        for shape in canvas.selected_shapes:
+            shape.selected = False
+        canvas.selected_shapes = []
+        image_center = QtCore.QPointF(
+            canvas.pixmap.width() / 2,
+            canvas.pixmap.height() / 2,
+        )
+        widget_center = (
+            image_center + canvas.offset_to_center()
+        ) * canvas.scale
+        double_click(widget_center)
+        self.assertFalse(self.workspace.is_single_view)
+
+    def test_single_view_fit_skips_hidden_canvases(self):
+        self.workspace.show_single_view("LR2")
+        hidden_scales = {"HR": 91.0, "LR3": 93.0, "LR4": 94.0}
+        for variant, scale in hidden_scales.items():
+            self.workspace.canvases[variant].scale = scale
+
+        self.workspace.fit_canvases()
+
+        for variant, scale in hidden_scales.items():
+            self.assertEqual(self.workspace.canvases[variant].scale, scale)
+
+    def test_loading_new_group_restores_tiled_views(self):
+        changes = []
+        self.workspace.single_view_changed.connect(changes.append)
+        self.workspace.show_single_view("LR4")
+        pixmaps, shapes = self.make_group("000002.png#0000")
+
+        self.workspace.load_group(pixmaps, shapes)
+        self.app.processEvents()
+
+        self.assertFalse(self.workspace.is_single_view)
+        self.assertEqual(self.workspace.active_variant, "HR")
+        self.assertEqual(changes, [True, False])
+        self.assertTrue(
+            all(pane.isVisible() for pane in self.workspace.panes.values())
+        )
+
     def test_focus_selected_object_zooms_and_centers_all_panes(self):
         for variant, canvas in self.workspace.canvases.items():
             width = canvas.pixmap.width()
@@ -177,9 +302,7 @@ class RealISRWorkspaceTest(unittest.TestCase):
         self.app.processEvents()
 
         for bars in self.workspace.scroll_bars.values():
-            self.assertEqual(
-                bars[QtCore.Qt.Orientation.Horizontal].value(), 0
-            )
+            self.assertEqual(bars[QtCore.Qt.Orientation.Horizontal].value(), 0)
             self.assertEqual(bars[QtCore.Qt.Orientation.Vertical].value(), 0)
 
     def test_focus_selected_object_respects_maximum_zoom(self):

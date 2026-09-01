@@ -72,6 +72,7 @@ from .utils.file_search import (
     matches_label_attribute,
 )
 from .utils.qt import new_icon_path
+from .utils.theme import get_theme
 from .widgets import (
     AboutDialog,
     AutoLabelingWidget,
@@ -2659,6 +2660,46 @@ class LabelingWidget(LabelDialog):
         self.realisr_dashboard = QLabel()
         self.realisr_dashboard.setWordWrap(True)
         realisr_panel_layout.addWidget(self.realisr_dashboard)
+        self.realisr_multiview_button = QPushButton(
+            self.tr("Tile Multiple Views")
+        )
+        self.realisr_multiview_button.setEnabled(False)
+        self.realisr_multiview_button.clicked.connect(
+            self.restore_realisr_multiview
+        )
+        self.realisr_workspace.single_view_changed.connect(
+            self.update_realisr_multiview_button
+        )
+        realisr_panel_layout.addWidget(self.realisr_multiview_button)
+        realisr_variant_layout = QHBoxLayout()
+        realisr_variant_layout.setContentsMargins(0, 0, 0, 0)
+        realisr_variant_layout.setSpacing(4)
+        self.realisr_variant_button_group = QButtonGroup(self)
+        self.realisr_variant_button_group.setExclusive(True)
+        self.realisr_variant_buttons = {}
+        theme = get_theme()
+        variant_button_style = (
+            "QPushButton:checked {"
+            f"background-color: {theme['primary']};"
+            f"border-color: {theme['primary']};"
+            f"color: {theme['selection_text']};"
+            "}"
+        )
+        for index, variant in enumerate(REALISR_VARIANTS):
+            button = QPushButton(variant)
+            button.setCheckable(True)
+            button.setChecked(variant == "HR")
+            button.setStyleSheet(variant_button_style)
+            button.clicked.connect(
+                functools.partial(self.select_realisr_variant, variant)
+            )
+            self.realisr_variant_button_group.addButton(button, index)
+            self.realisr_variant_buttons[variant] = button
+            realisr_variant_layout.addWidget(button, 1)
+        self.realisr_workspace.active_variant_changed.connect(
+            self.update_realisr_variant_buttons
+        )
+        realisr_panel_layout.addLayout(realisr_variant_layout)
         self.realisr_commit_button = QPushButton(
             self.tr("Confirm current group")
         )
@@ -7037,6 +7078,28 @@ class LabelingWidget(LabelDialog):
             return False
         return self.realisr_workspace.focus_selected_object()
 
+    def restore_realisr_multiview(self, _checked=False):
+        if not self.realisr_mode:
+            return False
+        return self.realisr_workspace.show_tiled_views()
+
+    def update_realisr_multiview_button(self, single_view):
+        self.realisr_multiview_button.setEnabled(
+            self.realisr_mode and bool(single_view)
+        )
+
+    def select_realisr_variant(self, variant, _checked=False):
+        if not self.realisr_mode or variant not in REALISR_VARIANTS:
+            return False
+        self.realisr_workspace.set_active_variant(variant)
+        self.update_realisr_variant_buttons()
+        return True
+
+    def update_realisr_variant_buttons(self, _variant=None):
+        active_variant = self.realisr_workspace.active_variant
+        for variant, button in self.realisr_variant_buttons.items():
+            button.setChecked(variant == active_variant)
+
     def update_realisr_focus_action_state(self):
         enabled = self.realisr_mode and (
             self.realisr_workspace.can_focus_selected_object()
@@ -7915,13 +7978,22 @@ class LabelingWidget(LabelDialog):
                 % committed,
                 6000,
             )
-        if index + 1 < len(self.realisr_dataset.samples):
-            self.load_realisr_sample(
-                self.realisr_dataset.samples[index + 1], variant
-            )
+        next_sample = self._next_uncommitted_realisr_sample(index)
+        if next_sample is not None:
+            self.load_realisr_sample(next_sample, variant)
         else:
             self.update_progress_title()
         return True
+
+    def _next_uncommitted_realisr_sample(self, current_index):
+        return next(
+            (
+                sample
+                for sample in self.realisr_dataset.samples[current_index + 1 :]
+                if not self.realisr_dataset.is_committed(sample)
+            ),
+            None,
+        )
 
     def navigate_realisr_sample(self, offset):
         if not self.realisr_mode or not self.realisr_sample:

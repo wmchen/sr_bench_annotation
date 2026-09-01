@@ -17,6 +17,7 @@ class RealISRCanvas(Canvas):
     """Canvas that reports activation and supports selection-only panes."""
 
     activated = QtCore.pyqtSignal()
+    blank_double_clicked = QtCore.pyqtSignal()
     recoverability_requested = QtCore.pyqtSignal(int)
     reveal_text_changed = QtCore.pyqtSignal(bool)
 
@@ -81,6 +82,16 @@ class RealISRCanvas(Canvas):
 
     def mouseDoubleClickEvent(self, event):
         self.activated.emit()
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self.editing()
+            and not self.selected_shapes
+        ):
+            position = self.transform_pos(event.position())
+            if next(iter(self._shape_hit_candidates(position)), None) is None:
+                self.blank_double_clicked.emit()
+                event.accept()
+                return
         if self.realisr_read_only:
             event.accept()
             return
@@ -119,6 +130,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
 
     active_variant_changed = QtCore.pyqtSignal(str)
     selection_changed = QtCore.pyqtSignal(str, list)
+    single_view_changed = QtCore.pyqtSignal(bool)
     recoverability_requested = QtCore.pyqtSignal(int)
     reveal_text_changed = QtCore.pyqtSignal(bool)
 
@@ -131,13 +143,17 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.images = {}
         self.active_variant = "HR"
         self.zoom_factor = 1.0
+        self._single_view = False
         self._syncing_scroll = False
         self._syncing_selection = False
         self._region_shape_indexes = {variant: {} for variant in VARIANTS}
 
-        layout = QtWidgets.QGridLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        self._layout = QtWidgets.QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(4)
+        for index in range(2):
+            self._layout.setRowStretch(index, 1)
+            self._layout.setColumnStretch(index, 1)
         for index, variant in enumerate(VARIANTS):
             canvas = RealISRCanvas(parent=parent, **canvas_options)
             # The HR region label (normally the literal "text") obscures the
@@ -147,6 +163,9 @@ class RealISRWorkspace(QtWidgets.QWidget):
             canvas.show_labels = variant != "HR"
             canvas.activated.connect(
                 functools.partial(self.set_active_variant, variant)
+            )
+            canvas.blank_double_clicked.connect(
+                functools.partial(self.show_single_view, variant)
             )
             canvas.zoom_request.connect(
                 functools.partial(self._zoom_request, variant)
@@ -180,7 +199,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
             pane_layout = QtWidgets.QVBoxLayout(pane)
             pane_layout.setContentsMargins(3, 3, 3, 3)
             pane_layout.addWidget(scroll_area)
-            layout.addWidget(pane, index // 2, index % 2)
+            self._layout.addWidget(pane, index // 2, index % 2)
 
             self.canvases[variant] = canvas
             self.scroll_areas[variant] = scroll_area
@@ -201,12 +220,83 @@ class RealISRWorkspace(QtWidgets.QWidget):
     def active_scroll_bars(self):
         return self.scroll_bars[self.active_variant]
 
+    @property
+    def is_single_view(self):
+        return self._single_view
+
+    def _displayed_variants(self):
+        return (self.active_variant,) if self._single_view else VARIANTS
+
+    def _apply_layout_mode(self):
+        for pane in self.panes.values():
+            self._layout.removeWidget(pane)
+            pane.hide()
+        if self._single_view:
+            pane = self.panes[self.active_variant]
+            self._layout.addWidget(pane, 0, 0, 2, 2)
+            pane.show()
+            return
+        for index, variant in enumerate(VARIANTS):
+            pane = self.panes[variant]
+            self._layout.addWidget(pane, index // 2, index % 2)
+            pane.show()
+
+    def _fit_and_restore_scroll_ratios(self, ratios):
+        self.fit_canvases()
+        QtCore.QTimer.singleShot(
+            0, functools.partial(self._restore_scroll_ratios, ratios)
+        )
+
+    def _schedule_layout_fit(self, ratios):
+        QtCore.QTimer.singleShot(
+            0, functools.partial(self._fit_and_restore_scroll_ratios, ratios)
+        )
+
+    def show_single_view(self, variant):
+        if variant not in VARIANTS or self._single_view:
+            return False
+        ratios = self._scroll_ratios(self.active_variant)
+        self.set_active_variant(variant)
+        changed = not self._single_view
+        self._single_view = True
+        self._apply_layout_mode()
+        self._schedule_layout_fit(ratios)
+        if changed:
+            self.single_view_changed.emit(True)
+        return True
+
+    def show_tiled_views(self, preserve_view=True):
+        ratios = (
+            self._scroll_ratios(self.active_variant)
+            if preserve_view and self.images
+            else {
+                Qt.Orientation.Horizontal: 0.0,
+                Qt.Orientation.Vertical: 0.0,
+            }
+        )
+        changed = self._single_view
+        self._single_view = False
+        self._apply_layout_mode()
+        if self.images:
+            self._schedule_layout_fit(ratios)
+        if changed:
+            self.single_view_changed.emit(False)
+        return changed
+
     def set_active_variant(self, variant):
         if variant not in VARIANTS:
             return
         changed = variant != self.active_variant
+        ratios = (
+            self._scroll_ratios(self.active_variant)
+            if changed and self._single_view
+            else None
+        )
         self.active_variant = variant
         if changed:
+            if self._single_view:
+                self._apply_layout_mode()
+                self._schedule_layout_fit(ratios)
             self._update_active_style()
             self.active_variant_changed.emit(variant)
         self.canvases[variant].setFocus(Qt.FocusReason.MouseFocusReason)
@@ -234,6 +324,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
 
     def clear(self):
         self.images = {}
+        self.show_tiled_views(preserve_view=False)
         for variant, canvas in self.canvases.items():
             canvas.reset_state()
             self._region_shape_indexes[variant] = {}
@@ -271,6 +362,7 @@ class RealISRWorkspace(QtWidgets.QWidget):
         finally:
             self._syncing_selection = False
         self.zoom_factor = 1.0
+        self.show_tiled_views(preserve_view=False)
         self.set_active_variant("HR")
         self.set_lr_text_revealed(False)
         QtCore.QTimer.singleShot(0, self.fit_canvases)
@@ -278,11 +370,14 @@ class RealISRWorkspace(QtWidgets.QWidget):
     def fit_canvases(self):
         if not self.images:
             return
+        displayed = self._displayed_variants()
         widths = [
-            area.viewport().width() for area in self.scroll_areas.values()
+            self.scroll_areas[variant].viewport().width()
+            for variant in displayed
         ]
         heights = [
-            area.viewport().height() for area in self.scroll_areas.values()
+            self.scroll_areas[variant].viewport().height()
+            for variant in displayed
         ]
         if not widths or min(widths) <= 4 or min(heights) <= 4:
             return
@@ -295,7 +390,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
 
         self._syncing_scroll = True
         try:
-            for canvas in self.canvases.values():
+            for variant in displayed:
+                canvas = self.canvases[variant]
                 pixmap = canvas.pixmap
                 if pixmap is None or pixmap.isNull():
                     continue
@@ -320,7 +416,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
     def _restore_scroll_ratios(self, ratios):
         self._syncing_scroll = True
         try:
-            for bars in self.scroll_bars.values():
+            for variant in self._displayed_variants():
+                bars = self.scroll_bars[variant]
                 for orientation, ratio in ratios.items():
                     bar = bars[orientation]
                     bar.setValue(round(ratio * bar.maximum()))
@@ -350,15 +447,17 @@ class RealISRWorkspace(QtWidgets.QWidget):
         bar.setValue(round(bar.value() + step * units))
 
     def _scroll_bar_changed(self, variant, orientation, _value):
-        if self._syncing_scroll:
+        displayed = self._displayed_variants()
+        if self._syncing_scroll or variant not in displayed:
             return
         source = self.scroll_bars[variant][orientation]
         ratio = source.value() / source.maximum() if source.maximum() else 0.0
         self._syncing_scroll = True
         try:
-            for other_variant, bars in self.scroll_bars.items():
+            for other_variant in displayed:
                 if other_variant == variant:
                     continue
+                bars = self.scroll_bars[other_variant]
                 bar = bars[orientation]
                 bar.setValue(round(ratio * bar.maximum()))
         finally:
@@ -391,7 +490,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 for shape in selected:
                     shape.selected = True
                 canvas.selected_shapes = selected
-                canvas.update()
+                if current_variant in self._displayed_variants():
+                    canvas.update()
         finally:
             self._syncing_selection = False
         self.selection_changed.emit(variant, list(shapes))
@@ -416,7 +516,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 for current_shape in selected:
                     current_shape.selected = True
                 canvas.selected_shapes = selected
-                canvas.update()
+                if current_variant in self._displayed_variants():
+                    canvas.update()
         finally:
             self._syncing_selection = False
 
@@ -451,7 +552,9 @@ class RealISRWorkspace(QtWidgets.QWidget):
             return False
 
         rectangles = {}
-        for variant, shape in region_shapes.items():
+        displayed = self._displayed_variants()
+        for variant in displayed:
+            shape = region_shapes[variant]
             try:
                 rectangle = shape.bounding_rect()
             except (IndexError, TypeError, ValueError):
@@ -521,7 +624,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
         """Center matching regions after scrollbar ranges are recalculated."""
         self._syncing_scroll = True
         try:
-            for variant, shape in region_shapes.items():
+            for variant in self._displayed_variants():
+                shape = region_shapes[variant]
                 canvas = self.canvases[variant]
                 if shape not in canvas.shapes:
                     continue
@@ -548,7 +652,8 @@ class RealISRWorkspace(QtWidgets.QWidget):
             for shape in canvas.shapes:
                 truth = shape.other_data.get("realisr_text", "")
                 shape.label = truth if active_reveal else ""
-            canvas.update()
+            if variant in self._displayed_variants():
+                canvas.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

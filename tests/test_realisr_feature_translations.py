@@ -77,11 +77,29 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
     def test_focus_selected_object_is_localized(self):
         labeling = self.translations_for("LabelingWidget")
         settings = self.translations_for("SettingsDialog")
-        self.assertEqual(
-            labeling.get("Focus Selected Object"), "聚焦选中对象"
+        self.assertEqual(labeling.get("Focus Selected Object"), "聚焦选中对象")
+        self.assertEqual(settings.get("Focus Selected Object"), "聚焦选中对象")
+
+    def test_multiview_button_is_localized_in_english_and_chinese(self):
+        chinese = self.translations_for("LabelingWidget")
+        english_catalog = (
+            Path(__file__).resolve().parents[1]
+            / "anylabeling/resources/translations/en_US.ts"
         )
+        english_root = ET.parse(english_catalog).getroot()
+        english_context = next(
+            context
+            for context in english_root.findall("context")
+            if context.findtext("name") == "LabelingWidget"
+        )
+        english = {
+            message.findtext("source"): message.findtext("translation")
+            for message in english_context.findall("message")
+        }
+
+        self.assertEqual(chinese.get("Tile Multiple Views"), "多视图平铺")
         self.assertEqual(
-            settings.get("Focus Selected Object"), "聚焦选中对象"
+            english.get("Tile Multiple Views"), "Tile Multiple Views"
         )
 
     def test_redundant_draft_warning_is_localized(self):
@@ -131,8 +149,7 @@ class RealISRFocusToolbarStructureTest(unittest.TestCase):
             for node in ast.walk(self.tree)
             if isinstance(node, ast.Assign)
             and any(
-                isinstance(target, ast.Attribute)
-                and target.attr == "tool"
+                isinstance(target, ast.Attribute) and target.attr == "tool"
                 for target in node.targets
             )
         )
@@ -146,6 +163,46 @@ class RealISRFocusToolbarStructureTest(unittest.TestCase):
             ["fit_width", "focus_selected_object", "zoom"],
         )
 
+    def test_view_controls_are_immediately_before_commit_button(self):
+        layout_operations = []
+        for node in ast.walk(self.tree):
+            if (
+                not isinstance(node, ast.Call)
+                or not node.args
+                or not isinstance(node.func, ast.Attribute)
+            ):
+                continue
+            function = node.func
+            if (
+                function.attr not in {"addWidget", "addLayout"}
+                or not isinstance(function.value, ast.Name)
+                or function.value.id != "realisr_panel_layout"
+            ):
+                continue
+            argument = node.args[0]
+            name = None
+            if isinstance(argument, ast.Attribute):
+                name = argument.attr
+            elif isinstance(argument, ast.Name):
+                name = argument.id
+            if name is not None:
+                layout_operations.append((node.lineno, function.attr, name))
+
+        layout_operations.sort()
+        controls = [
+            (operation, name) for _, operation, name in layout_operations
+        ]
+
+        self.assertIn(
+            [
+                ("addWidget", "realisr_dashboard"),
+                ("addWidget", "realisr_multiview_button"),
+                ("addLayout", "realisr_variant_layout"),
+                ("addWidget", "realisr_commit_button"),
+            ],
+            [controls[index : index + 4] for index in range(len(controls))],
+        )
+
 
 @unittest.skipUnless(QT_AVAILABLE, "PyQt6 translation runtime is unavailable")
 class RealISRCompiledTranslationTest(unittest.TestCase):
@@ -155,9 +212,7 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
         if cls.app is None:
             cls.app = QtWidgets.QApplication([])
         cls.translator = QtCore.QTranslator()
-        if not cls.translator.load(
-            ":/languages/translations/zh_CN.qm"
-        ):
+        if not cls.translator.load(":/languages/translations/zh_CN.qm"):
             raise AssertionError("Could not load compiled zh_CN translation")
         cls.app.installTranslator(cls.translator)
 
@@ -175,6 +230,7 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
                 "Confirm Full-Image Inference",
             ): "确认全图推理",
             ("LabelingWidget", "Focus Selected Object"): "聚焦选中对象",
+            ("LabelingWidget", "Tile Multiple Views"): "多视图平铺",
             (
                 "LabelingWidget",
                 "Redundant Real-ISR drafts",
@@ -194,6 +250,21 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
                 QtCore.QCoreApplication.translate(context, source),
                 expected,
             )
+
+        english_translator = QtCore.QTranslator()
+        self.assertTrue(
+            english_translator.load(":/languages/translations/en_US.qm")
+        )
+        self.app.installTranslator(english_translator)
+        try:
+            self.assertEqual(
+                QtCore.QCoreApplication.translate(
+                    "LabelingWidget", "Tile Multiple Views"
+                ),
+                "Tile Multiple Views",
+            )
+        finally:
+            self.app.removeTranslator(english_translator)
 
 
 if __name__ == "__main__":

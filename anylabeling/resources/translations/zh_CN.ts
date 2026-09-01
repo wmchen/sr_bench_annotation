@@ -5138,6 +5138,10 @@ Results have been saved to:
       <translation>确认当前组</translation>
     </message>
     <message>
+      <source>Tile Multiple Views</source>
+      <translation>多视图平铺</translation>
+    </message>
+    <message>
       <source>Invalid Real-ISR dataset</source>
       <translation>Real-ISR 数据集无效</translation>
     </message>

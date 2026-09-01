@@ -3693,6 +3693,10 @@ Press Enter to search.</source>
       <translation>Zoom and center all Real-ISR views on the selected object</translation>
     </message>
     <message>
+      <source>Tile Multiple Views</source>
+      <translation>Tile Multiple Views</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
       <location filename="../../views/labeling/label_widget.py" line="1264" />
       <source>Set Brightness Contrast</source>

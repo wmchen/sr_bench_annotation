@@ -158,6 +158,98 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         LabelingWidget.update_realisr_focus_action_state(widget)
         action.setEnabled.assert_called_with(True)
 
+    def test_multiview_button_tracks_workspace_mode(self):
+        button = SimpleNamespace(setEnabled=Mock())
+        widget = SimpleNamespace(
+            realisr_mode=False,
+            realisr_multiview_button=button,
+        )
+
+        LabelingWidget.update_realisr_multiview_button(widget, True)
+        button.setEnabled.assert_called_with(False)
+
+        widget.realisr_mode = True
+        LabelingWidget.update_realisr_multiview_button(widget, True)
+        button.setEnabled.assert_called_with(True)
+        LabelingWidget.update_realisr_multiview_button(widget, False)
+        button.setEnabled.assert_called_with(False)
+
+    def test_restore_multiview_is_realisr_only(self):
+        workspace = SimpleNamespace(show_tiled_views=Mock(return_value=True))
+        widget = SimpleNamespace(
+            realisr_mode=False,
+            realisr_workspace=workspace,
+        )
+
+        self.assertFalse(LabelingWidget.restore_realisr_multiview(widget))
+        workspace.show_tiled_views.assert_not_called()
+
+        widget.realisr_mode = True
+        self.assertTrue(LabelingWidget.restore_realisr_multiview(widget))
+        workspace.show_tiled_views.assert_called_once_with()
+
+    def test_variant_buttons_switch_workspace_in_realisr_mode(self):
+        workspace = SimpleNamespace(
+            active_variant="HR",
+            set_active_variant=Mock(),
+        )
+        buttons = {
+            variant: SimpleNamespace(setChecked=Mock())
+            for variant in ("HR", "LR2", "LR3", "LR4")
+        }
+        widget = SimpleNamespace(
+            realisr_mode=False,
+            realisr_workspace=workspace,
+            realisr_variant_buttons=buttons,
+            update_realisr_variant_buttons=Mock(),
+        )
+
+        self.assertFalse(LabelingWidget.select_realisr_variant(widget, "LR3"))
+        workspace.set_active_variant.assert_not_called()
+
+        widget.realisr_mode = True
+        self.assertTrue(LabelingWidget.select_realisr_variant(widget, "LR3"))
+        workspace.set_active_variant.assert_called_once_with("LR3")
+        widget.update_realisr_variant_buttons.assert_called_once_with()
+
+    def test_variant_button_highlight_matches_workspace_active_variant(self):
+        buttons = {
+            variant: SimpleNamespace(setChecked=Mock())
+            for variant in ("HR", "LR2", "LR3", "LR4")
+        }
+        widget = SimpleNamespace(
+            realisr_workspace=SimpleNamespace(active_variant="LR3"),
+            realisr_variant_buttons=buttons,
+        )
+
+        LabelingWidget.update_realisr_variant_buttons(widget)
+
+        for variant, button in buttons.items():
+            button.setChecked.assert_called_once_with(variant == "LR3")
+
+    def test_next_uncommitted_sample_skips_committed_without_wrapping(self):
+        committed = {"000002.png", "000003.png", "000005.png"}
+        widget = SimpleNamespace(
+            realisr_dataset=SimpleNamespace(
+                samples=[
+                    "000001.png",
+                    "000002.png",
+                    "000003.png",
+                    "000004.png",
+                    "000005.png",
+                ],
+                is_committed=lambda sample: sample in committed,
+            )
+        )
+
+        self.assertEqual(
+            LabelingWidget._next_uncommitted_realisr_sample(widget, 0),
+            "000004.png",
+        )
+        self.assertIsNone(
+            LabelingWidget._next_uncommitted_realisr_sample(widget, 3)
+        )
+
     def test_variant_switch_flushes_only_when_hr_is_dirty(self):
         def make_widget(hr_dirty):
             canvas = SimpleNamespace()
@@ -212,9 +304,9 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         for name, checked in states.items():
             actions[name] = SimpleNamespace(
                 isChecked=Mock(
-                    return_value=checked
-                    if name == "show_masks"
-                    else not checked
+                    return_value=(
+                        checked if name == "show_masks" else not checked
+                    )
                 ),
                 setChecked=Mock(),
             )
