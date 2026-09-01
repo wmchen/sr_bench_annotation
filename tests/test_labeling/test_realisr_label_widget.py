@@ -156,6 +156,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 label_list=SimpleNamespace(canvas=None),
                 realisr_sample=None,
                 realisr_dataset=SimpleNamespace(),
+                _sync_canvas_view_actions=Mock(),
                 refresh_realisr_active_label_list=Mock(),
                 refresh_realisr_label_display=Mock(),
                 apply_realisr_action_state=Mock(),
@@ -166,10 +167,62 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         clean = make_widget(False)
         LabelingWidget.activate_realisr_variant(clean, "LR2")
         clean.flush_realisr_draft.assert_not_called()
+        self.assertIs(clean.canvas, clean.realisr_workspace.canvases["LR2"])
+        clean._sync_canvas_view_actions.assert_called_once_with()
 
         dirty = make_widget(True)
         LabelingWidget.activate_realisr_variant(dirty, "LR2")
         dirty.flush_realisr_draft.assert_called_once_with()
+        dirty._sync_canvas_view_actions.assert_called_once_with()
+
+    def test_canvas_view_actions_match_active_canvas_state(self):
+        states = {
+            "show_masks": False,
+            "show_texts": True,
+            "show_labels": False,
+            "show_scores": True,
+            "show_degrees": False,
+            "show_attributes": True,
+            "show_linking": False,
+            "show_groups": True,
+        }
+        actions = {}
+        for name, checked in states.items():
+            actions[name] = SimpleNamespace(
+                isChecked=Mock(
+                    return_value=checked
+                    if name == "show_masks"
+                    else not checked
+                ),
+                setChecked=Mock(),
+            )
+        widget = SimpleNamespace(
+            canvas=SimpleNamespace(**states),
+            actions=SimpleNamespace(**actions),
+        )
+
+        LabelingWidget._sync_canvas_view_actions(widget)
+
+        for name, checked in states.items():
+            if name == "show_masks":
+                actions[name].setChecked.assert_not_called()
+            else:
+                actions[name].setChecked.assert_called_once_with(checked)
+
+    def test_leaving_realisr_syncs_view_actions_to_normal_canvas(self):
+        normal_canvas = SimpleNamespace(reset_state=Mock())
+        widget = Mock()
+        widget.realisr_mode = True
+        widget._realisr_description_was_visible = False
+        widget._normal_canvas = normal_canvas
+        widget.fn_to_index = {}
+
+        result = LabelingWidget.leave_realisr_mode(widget, flush=False)
+
+        self.assertTrue(result)
+        self.assertIs(widget.canvas, normal_canvas)
+        widget._sync_canvas_view_actions.assert_called_once_with()
+        self.assertFalse(widget.realisr_mode)
 
     def test_face_new_shape_uses_fixed_label_without_popup(self):
         draft_shape = SimpleNamespace(shape_type="rectangle")

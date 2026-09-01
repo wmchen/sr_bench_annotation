@@ -5966,6 +5966,24 @@ class LabelingWidget(LabelDialog):
         setattr(self.canvas, key, value)
         self.canvas.update()
 
+    def _sync_canvas_view_actions(self):
+        """Match canvas-backed View actions to the active canvas state."""
+        canvas_view_actions = (
+            "show_masks",
+            "show_texts",
+            "show_labels",
+            "show_scores",
+            "show_degrees",
+            "show_attributes",
+            "show_linking",
+            "show_groups",
+        )
+        for name in canvas_view_actions:
+            action = getattr(self.actions, name)
+            checked = bool(getattr(self.canvas, name))
+            if action.isChecked() != checked:
+                action.setChecked(checked)
+
     def open_settings_dialog(self):
         if self._settings_controller is None:
             return
@@ -7146,6 +7164,7 @@ class LabelingWidget(LabelDialog):
             self._normal_scroll_area.show()
             self.canvas = self._normal_canvas
             self._normal_canvas.reset_state()
+            self._sync_canvas_view_actions()
             self.label_list.canvas = self.canvas
             self._canvas_scroll_area = self._normal_scroll_area
             self._central_widget = self._normal_scroll_area
@@ -7301,6 +7320,7 @@ class LabelingWidget(LabelDialog):
             self.realisr_workspace.set_active_variant("HR")
             return
         self.canvas = self.realisr_workspace.canvases[variant]
+        self._sync_canvas_view_actions()
         self.label_list.canvas = self.canvas
         self._canvas_scroll_area = self.realisr_workspace.scroll_areas[variant]
         self._central_widget = self._canvas_scroll_area
