@@ -102,6 +102,28 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         dataset_class.assert_not_called()
         widget.enter_realisr_mode.assert_not_called()
 
+    def test_redundant_draft_warning_lists_samples_and_recovery_action(self):
+        widget = SimpleNamespace(tr=lambda text: text)
+        samples = ["000004.png", "000017.png"]
+
+        with patch.object(QtWidgets.QMessageBox, "warning") as warning:
+            LabelingWidget.warn_redundant_realisr_drafts(widget, samples)
+
+        warning.assert_called_once_with(
+            widget,
+            "Redundant Real-ISR drafts",
+            "These drafts are identical to their formal annotations:\n"
+            "000004.png\n000017.png\n\n"
+            "Open each corresponding image and save it again to clear the "
+            "redundant draft.",
+        )
+
+    def test_redundant_draft_warning_is_skipped_when_empty(self):
+        widget = SimpleNamespace(tr=lambda text: text)
+        with patch.object(QtWidgets.QMessageBox, "warning") as warning:
+            LabelingWidget.warn_redundant_realisr_drafts(widget, [])
+        warning.assert_not_called()
+
     def test_focus_selected_object_is_realisr_only(self):
         workspace = SimpleNamespace(
             focus_selected_object=Mock(return_value=True)

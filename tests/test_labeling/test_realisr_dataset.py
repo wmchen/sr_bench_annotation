@@ -361,6 +361,55 @@ class RealISRDatasetTest(unittest.TestCase):
 
         write.assert_not_called()
 
+    def test_opening_selection_classifies_drafts_and_uses_priority_order(self):
+        dataset = RealISRDataset.__new__(RealISRDataset)
+        dataset.samples = ["000001.png", "000002.png", "000010.png"]
+        dataset.formal_json_samples = {"000001.png", "000002.png"}
+        dataset.formal = {
+            variant: {
+                "000001.png": [{"recoverable": 0}],
+                "000002.png": [{"recoverable": 1}],
+            }
+            for variant in VARIANTS
+        }
+        dataset._sample_stats_cache = {
+            "000001.png": {"committed_samples": 1},
+            "000002.png": {"committed_samples": 1},
+            "000010.png": {"committed_samples": 0},
+        }
+
+        redundant_group = {
+            variant: [{"recoverable": 1}] for variant in VARIANTS
+        }
+        pending_group = {
+            variant: [{"recoverable": None}] for variant in VARIANTS
+        }
+        dataset.drafts = {
+            "000002.png": redundant_group,
+            "000010.png": pending_group,
+        }
+        self.assertEqual(
+            dataset.opening_selection(),
+            ("000010.png", ["000002.png"]),
+        )
+
+        changed_formal_group = copy.deepcopy(redundant_group)
+        changed_formal_group["LR4"][0]["recoverable"] = 2
+        dataset.drafts = {"000002.png": changed_formal_group}
+        self.assertEqual(dataset.opening_selection(), ("000002.png", []))
+
+        dataset.drafts = {"000002.png": redundant_group}
+        self.assertEqual(
+            dataset.opening_selection(),
+            ("000010.png", ["000002.png"]),
+        )
+
+        dataset.drafts = {}
+        self.assertEqual(dataset.opening_selection(), ("000010.png", []))
+
+        dataset._sample_stats_cache["000010.png"]["committed_samples"] = 1
+        self.assertEqual(dataset.opening_selection(), ("000001.png", []))
+
     def test_monotonicity_is_warning_not_completeness_error(self):
         dataset = RealISRDataset(self.root, "text")
         region_id = self.add_record(dataset, self.text_record())

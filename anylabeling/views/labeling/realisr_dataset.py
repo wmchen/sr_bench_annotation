@@ -929,6 +929,31 @@ class RealISRDataset:
     def is_committed(self, sample):
         return bool(self._sample_stats_cache[sample]["committed_samples"])
 
+    def classify_draft_samples(self):
+        """Split drafts into genuinely changed and redundant samples."""
+        pending = []
+        redundant = []
+        for sample in self.samples:
+            if sample not in self.drafts:
+                continue
+            matches_formal = sample in self.formal_json_samples and all(
+                self.drafts[sample].get(variant)
+                == self.formal[variant].get(sample)
+                for variant in VARIANTS
+            )
+            (redundant if matches_formal else pending).append(sample)
+        return pending, redundant
+
+    def opening_selection(self):
+        """Return the opening sample and any redundant draft samples."""
+        pending_drafts, redundant_drafts = self.classify_draft_samples()
+        if pending_drafts:
+            return pending_drafts[0], redundant_drafts
+        for sample in self.samples:
+            if not self.is_committed(sample):
+                return sample, redundant_drafts
+        return self.samples[0], redundant_drafts
+
     def dashboard_stats(self):
         return dict(self._dashboard_stats_cache)
 

@@ -7145,7 +7145,24 @@ class LabelingWidget(LabelDialog):
             self.file_list_widget.addItem(item)
             self.fn_to_index[dataset.path_for("HR", sample)] = index
         self.file_list_widget.blockSignals(False)
-        self.load_realisr_sample(dataset.samples[0], "HR")
+        initial_sample, redundant_drafts = dataset.opening_selection()
+        self.load_realisr_sample(initial_sample, "HR")
+        self.warn_redundant_realisr_drafts(redundant_drafts)
+
+    def warn_redundant_realisr_drafts(self, samples):
+        if not samples:
+            return
+        QMessageBox.warning(
+            self,
+            self.tr("Redundant Real-ISR drafts"),
+            self.tr(
+                "These drafts are identical to their formal annotations:\n"
+                "%s\n\n"
+                "Open each corresponding image and save it again to clear "
+                "the redundant draft."
+            )
+            % "\n".join(samples),
+        )
 
     def leave_realisr_mode(self, flush=True):
         if not self.realisr_mode:

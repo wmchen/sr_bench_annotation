@@ -84,6 +84,23 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
             settings.get("Focus Selected Object"), "聚焦选中对象"
         )
 
+    def test_redundant_draft_warning_is_localized(self):
+        translations = self.translations_for("LabelingWidget")
+        self.assertEqual(
+            translations.get("Redundant Real-ISR drafts"),
+            "冗余的 Real-ISR 草稿",
+        )
+        self.assertEqual(
+            translations.get(
+                "These drafts are identical to their formal annotations:\n"
+                "%s\n\n"
+                "Open each corresponding image and save it again to clear "
+                "the redundant draft."
+            ),
+            "以下草稿与正式标注完全相同：\n%s\n\n"
+            "请打开对应图像并重新保存，以清除冗余草稿。",
+        )
+
 
 class RealISRFocusToolbarStructureTest(unittest.TestCase):
     @classmethod
@@ -158,6 +175,18 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
                 "Confirm Full-Image Inference",
             ): "确认全图推理",
             ("LabelingWidget", "Focus Selected Object"): "聚焦选中对象",
+            (
+                "LabelingWidget",
+                "Redundant Real-ISR drafts",
+            ): "冗余的 Real-ISR 草稿",
+            (
+                "LabelingWidget",
+                "These drafts are identical to their formal annotations:\n"
+                "%s\n\n"
+                "Open each corresponding image and save it again to clear "
+                "the redundant draft.",
+            ): "以下草稿与正式标注完全相同：\n%s\n\n"
+            "请打开对应图像并重新保存，以清除冗余草稿。",
             ("SettingsDialog", "Focus Selected Object"): "聚焦选中对象",
         }
         for (context, source), expected in checks.items():

@@ -5142,6 +5142,20 @@ Results have been saved to:
       <translation>Real-ISR 数据集无效</translation>
     </message>
     <message>
+      <source>Redundant Real-ISR drafts</source>
+      <translation>冗余的 Real-ISR 草稿</translation>
+    </message>
+    <message>
+      <source>These drafts are identical to their formal annotations:
+%s
+
+Open each corresponding image and save it again to clear the redundant draft.</source>
+      <translation>以下草稿与正式标注完全相同：
+%s
+
+请打开对应图像并重新保存，以清除冗余草稿。</translation>
+    </message>
+    <message>
       <source>Real-ISR: edit text regions in HR; assign 0/1/2 in LR</source>
       <translation>Real-ISR：在 HR 编辑文本区域，在 LR 填写 0/1/2</translation>
     </message>
