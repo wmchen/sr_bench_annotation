@@ -918,7 +918,7 @@ digit_shortcuts:
 | Ctrl + Shift + n      | 遍历放大对象                          |
 | Ctrl + Shift + c      | 遍历选中对象                          |
 | Delete                | 删除选中对象                          |
-| Esc                   | 取消选择的对象                         |
+| Esc                   | 取消选择/当前绘制；绘制空闲时返回编辑模式          |
 | Backspace             | 删除画布中选定的对象                      |
 | Shift + Backspace     | 删除选定的多边形顶点                      |
 | ↑→↓←                  | 使用键盘箭头移动选定的对象                   |

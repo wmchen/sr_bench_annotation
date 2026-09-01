@@ -862,7 +862,7 @@ You can also update shortcuts in the GUI: open Settings with `Ctrl+0`, then edit
 | `Ctrl+Shift+c`        | Cycle Select Shapes                              | Selects next shape on canvas               |
 | `Ctrl+z`              | Undo Last Action                                 |                                            |
 | `Delete`              | Delete Selection                                 | Deletes selected shape(s)                  |
-| `Esc`                 | Deselect Object / Cancel Drawing                 |                                            |
+| `Esc`                 | Deselect / Cancel Drawing / Exit Drawing Mode    | Exits Drawing Mode when no shape is active |
 | `Backspace`           | Delete Canvas Selection                          | Only when the canvas has keyboard focus    |
 | `Shift+Backspace`     | Delete Selected Point (Polygon Edit)             | While editing polygon points (`Ctrl+J`)    |
 | `↑`, `→`, `↓`, `←`    | Move Selection (Arrow Keys)                      | Nudge selected shape(s)                    |

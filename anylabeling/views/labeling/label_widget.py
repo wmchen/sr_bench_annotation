@@ -515,6 +515,7 @@ class LabelingWidget(LabelDialog):
             realisr_canvas.delete_selected_requested.connect(
                 self.delete_selected_shape
             )
+            realisr_canvas.edit_mode_requested.connect(self.set_edit_mode)
             realisr_canvas.drawing_polygon.connect(
                 self.toggle_drawing_sensitive
             )
@@ -563,6 +564,7 @@ class LabelingWidget(LabelDialog):
         self.canvas.delete_selected_requested.connect(
             self.delete_selected_shape
         )
+        self.canvas.edit_mode_requested.connect(self.set_edit_mode)
         self.canvas.selection_changed.connect(self.shape_selection_changed)
         self.canvas.drawing_polygon.connect(self.toggle_drawing_sensitive)
         self.canvas.edit_label_requested.connect(self.edit_label)

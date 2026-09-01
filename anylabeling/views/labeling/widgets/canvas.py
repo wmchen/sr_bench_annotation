@@ -68,6 +68,7 @@ class Canvas(
     shape_rotated = QtCore.pyqtSignal()
     shapes_deleted = QtCore.pyqtSignal(list)
     delete_selected_requested = QtCore.pyqtSignal()
+    edit_mode_requested = QtCore.pyqtSignal()
     drawing_polygon = QtCore.pyqtSignal(bool)
     vertex_selected = QtCore.pyqtSignal(bool)
     auto_labeling_marks_updated = QtCore.pyqtSignal(list)
@@ -5314,6 +5315,9 @@ class Canvas(
                 self.override_cursor(CURSOR_GRAB)
             ev.accept()
             return
+        if key == QtCore.Qt.Key.Key_Escape and ev.isAutoRepeat():
+            ev.accept()
+            return
         if self.is_brush_mode and self.editing():
             if self._brush_key_press(ev):
                 return
@@ -5322,11 +5326,16 @@ class Canvas(
             ev.accept()
             return
         if self.drawing():
-            if key == QtCore.Qt.Key.Key_Escape and self.current:
-                self.current = None
-                self._brush_drawing = False
-                self.drawing_polygon.emit(False)
-                self.update()
+            if key == QtCore.Qt.Key.Key_Escape:
+                if self.current:
+                    self.current = None
+                    self._brush_drawing = False
+                    self.drawing_polygon.emit(False)
+                    self.update()
+                elif not self.is_auto_labeling:
+                    self.edit_mode_requested.emit()
+                ev.accept()
+                return
             elif key == QtCore.Qt.Key.Key_Backspace and self.current:
                 if self.create_mode in ["polygon", "linestrip"]:
                     if len(self.current.points) > 1:
@@ -5357,6 +5366,7 @@ class Canvas(
                 return
             if key == QtCore.Qt.Key.Key_Escape:
                 self.deselect_shape()
+                ev.accept()
                 return
             if (
                 key == QtCore.Qt.Key.Key_Alt

@@ -228,6 +228,10 @@ class TestCanvasMagicWand(unittest.TestCase):
         self.assertEqual(mode_changes, [True])
 
     def test_escape_cancels_preview(self):
+        edit_mode_requests = []
+        self.canvas.edit_mode_requested.connect(
+            lambda: edit_mode_requests.append(True)
+        )
         self.canvas.resize(40, 30)
         self.canvas.mousePressEvent(
             self.mouse_event(
@@ -260,6 +264,18 @@ class TestCanvasMagicWand(unittest.TestCase):
         self.assertIsNone(self.canvas._magic_wand_distance)
         self.assertIsNone(self.canvas._magic_wand_mask)
         self.assertEqual(self.canvas.shapes, [])
+        self.assertEqual(edit_mode_requests, [])
+
+        second_event = QtGui.QKeyEvent(
+            QtCore.QEvent.Type.KeyPress,
+            QtCore.Qt.Key.Key_Escape,
+            QtCore.Qt.KeyboardModifier.NoModifier,
+        )
+
+        self.canvas.keyPressEvent(second_event)
+
+        self.assertTrue(second_event.isAccepted())
+        self.assertEqual(edit_mode_requests, [True])
 
 
 if __name__ == "__main__":
