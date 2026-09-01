@@ -7593,6 +7593,7 @@ class LabelingWidget(LabelDialog):
             self.realisr_workspace.select_region(
                 self._realisr_region_id(next_shape)
             )
+            self.realisr_workspace.focus_selected_object()
         elif self.realisr_variant in REALISR_VARIANTS[1:]:
             QtCore.QTimer.singleShot(
                 0,

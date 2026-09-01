@@ -285,6 +285,45 @@ class RealISRWorkspaceTest(unittest.TestCase):
                 viewport.height() * 0.70 + 2.0,
             )
 
+    def test_focus_selected_object_centers_only_visible_single_pane(self):
+        self.workspace.show_single_view("LR2")
+        self.app.processEvents()
+        self.app.processEvents()
+        canvas = self.workspace.canvases["LR2"]
+        width = canvas.pixmap.width()
+        height = canvas.pixmap.height()
+        canvas.shapes[0].points = [
+            QtCore.QPointF(width * 0.55, height * 0.40),
+            QtCore.QPointF(width * 0.65, height * 0.40),
+            QtCore.QPointF(width * 0.65, height * 0.50),
+            QtCore.QPointF(width * 0.55, height * 0.50),
+        ]
+        hidden_scales = {"HR": 91.0, "LR3": 93.0, "LR4": 94.0}
+        for variant, scale in hidden_scales.items():
+            self.workspace.canvases[variant].scale = scale
+        self.workspace.select_region("000001.png#0000", notify=False)
+
+        self.assertTrue(self.workspace.focus_selected_object())
+        self.app.processEvents()
+        self.app.processEvents()
+
+        rectangle = canvas.selected_shapes[0].bounding_rect()
+        center = rectangle.center() + canvas.offset_to_center()
+        viewport = self.workspace.scroll_areas["LR2"].viewport()
+        bars = self.workspace.scroll_bars["LR2"]
+        displayed_x = (
+            center.x() * canvas.scale
+            - bars[QtCore.Qt.Orientation.Horizontal].value()
+        )
+        displayed_y = (
+            center.y() * canvas.scale
+            - bars[QtCore.Qt.Orientation.Vertical].value()
+        )
+        self.assertAlmostEqual(displayed_x, viewport.width() / 2, delta=2.0)
+        self.assertAlmostEqual(displayed_y, viewport.height() / 2, delta=2.0)
+        for variant, scale in hidden_scales.items():
+            self.assertEqual(self.workspace.canvases[variant].scale, scale)
+
     def test_focus_selected_object_clamps_edge_scroll_position(self):
         for canvas in self.workspace.canvases.values():
             width = canvas.pixmap.width()

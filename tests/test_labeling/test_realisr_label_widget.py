@@ -1,7 +1,7 @@
 import os
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -226,6 +226,87 @@ class RealISRLabelWidgetTest(unittest.TestCase):
 
         for variant, button in buttons.items():
             button.setChecked.assert_called_once_with(variant == "LR3")
+
+    def test_recoverability_wraps_to_next_missing_shape_and_focuses_it(self):
+        next_shape = SimpleNamespace(
+            other_data={"region_id": "region-next", "recoverable": None}
+        )
+        current_shape = SimpleNamespace(
+            other_data={"region_id": "region-current", "recoverable": None}
+        )
+        workspace = Mock()
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR2",
+            realisr_sample="sample.png",
+            canvas=SimpleNamespace(
+                shapes=[next_shape, current_shape],
+                selected_shapes=[current_shape],
+            ),
+            realisr_dataset=SimpleNamespace(
+                set_recoverable=Mock(return_value=True)
+            ),
+            realisr_workspace=workspace,
+            _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            apply_realisr_shape_color=Mock(),
+            dirty=False,
+            _realisr_draft_dirty=False,
+            actions=SimpleNamespace(save=SimpleNamespace(setEnabled=Mock())),
+            realisr_draft_timer=SimpleNamespace(start=Mock()),
+            update_realisr_ui=Mock(),
+            refresh_realisr_file_item=Mock(),
+        )
+
+        LabelingWidget.set_realisr_recoverable(widget, 1)
+
+        self.assertEqual(current_shape.other_data["recoverable"], 1)
+        self.assertEqual(
+            workspace.method_calls,
+            [
+                call.select_region("region-next"),
+                call.focus_selected_object(),
+            ],
+        )
+
+    def test_recoverability_does_not_focus_when_advancing_lr_variant(self):
+        current_shape = SimpleNamespace(
+            other_data={"region_id": "region-current", "recoverable": None}
+        )
+        workspace = Mock()
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR2",
+            realisr_sample="sample.png",
+            canvas=SimpleNamespace(
+                shapes=[current_shape],
+                selected_shapes=[current_shape],
+            ),
+            realisr_dataset=SimpleNamespace(
+                set_recoverable=Mock(return_value=True)
+            ),
+            realisr_workspace=workspace,
+            _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            apply_realisr_shape_color=Mock(),
+            dirty=False,
+            _realisr_draft_dirty=False,
+            actions=SimpleNamespace(save=SimpleNamespace(setEnabled=Mock())),
+            realisr_draft_timer=SimpleNamespace(start=Mock()),
+            update_realisr_ui=Mock(),
+            refresh_realisr_file_item=Mock(),
+            advance_realisr_variant=Mock(),
+        )
+
+        with patch.object(QtCore.QTimer, "singleShot") as single_shot:
+            LabelingWidget.set_realisr_recoverable(widget, 1)
+
+        workspace.focus_selected_object.assert_not_called()
+        single_shot.assert_called_once()
 
     def test_next_uncommitted_sample_skips_committed_without_wrapping(self):
         committed = {"000002.png", "000003.png", "000005.png"}
