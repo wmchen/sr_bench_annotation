@@ -763,20 +763,38 @@ class RealISRDataset:
         return True
 
     def set_recoverable(self, sample, variant, region_id, value):
+        return self.set_recoverable_many(sample, variant, [region_id], value)
+
+    def set_recoverable_many(self, sample, variant, region_ids, value):
         if variant not in VARIANTS:
             raise KeyError(variant)
         if value not in (0, 1, 2):
             raise ValueError("recoverable must be 0, 1, or 2")
-        for record in self.records[sample][variant]:
-            if record.get("region_id") == region_id:
-                if record.get("recoverable") == value:
-                    return False
-                previous_stats = self._sample_stats_cache.get(sample)
-                record["recoverable"] = value
-                self.mark_draft(sample)
-                self._refresh_sample_stats(sample, previous_stats)
-                return True
-        raise KeyError(region_id)
+        region_ids = list(dict.fromkeys(region_ids))
+        records_by_id = {
+            record.get("region_id"): record
+            for record in self.records[sample][variant]
+        }
+        missing = [
+            region_id
+            for region_id in region_ids
+            if region_id not in records_by_id
+        ]
+        if missing:
+            raise KeyError(missing[0])
+        changed_records = [
+            records_by_id[region_id]
+            for region_id in region_ids
+            if records_by_id[region_id].get("recoverable") != value
+        ]
+        if not changed_records:
+            return False
+        previous_stats = self._sample_stats_cache.get(sample)
+        for record in changed_records:
+            record["recoverable"] = value
+        self.mark_draft(sample)
+        self._refresh_sample_stats(sample, previous_stats)
+        return True
 
     def mark_draft(self, sample):
         # records is already the authoritative in-memory draft.  Retaining the

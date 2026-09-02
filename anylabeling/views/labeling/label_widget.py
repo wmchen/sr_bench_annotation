@@ -2346,6 +2346,7 @@ class LabelingWidget(LabelDialog):
         self.actions.tool = (
             # open_,
             opendir,
+            open_realisr,
             open_next_image,
             open_prev_image,
             save,
@@ -7535,24 +7536,30 @@ class LabelingWidget(LabelDialog):
             return False
 
     def set_realisr_recoverable(self, value, _checked=False):
+        selected_shapes = list(self.canvas.selected_shapes)
         if (
             not self.realisr_mode
             or self.realisr_variant == "HR"
-            or len(self.canvas.selected_shapes) != 1
+            or not selected_shapes
             or value not in (0, 1, 2)
         ):
             return
-        shape = self.canvas.selected_shapes[0]
-        region_id = self._realisr_region_id(shape)
-        if not region_id:
+        region_ids = [
+            self._realisr_region_id(shape) for shape in selected_shapes
+        ]
+        if any(not region_id for region_id in region_ids):
             return
-        changed = self.realisr_dataset.set_recoverable(
-            self.realisr_sample, self.realisr_variant, region_id, value
+        changed = self.realisr_dataset.set_recoverable_many(
+            self.realisr_sample,
+            self.realisr_variant,
+            region_ids,
+            value,
         )
         if not changed:
             return
-        shape.other_data["recoverable"] = value
-        self.apply_realisr_shape_color(shape)
+        for shape in selected_shapes:
+            shape.other_data["recoverable"] = value
+            self.apply_realisr_shape_color(shape)
         self.dirty = True
         self._realisr_draft_dirty = True
         self.actions.save.setEnabled(True)
@@ -7561,7 +7568,7 @@ class LabelingWidget(LabelDialog):
         self.refresh_realisr_file_item(self.realisr_sample)
 
         shapes = self.canvas.shapes
-        current_index = shapes.index(shape)
+        current_index = shapes.index(selected_shapes[-1])
         candidates = shapes[current_index + 1 :] + shapes[:current_index]
         next_shape = next(
             (
@@ -7675,16 +7682,17 @@ class LabelingWidget(LabelDialog):
             % (self.realisr_variant, complete, total)
         )
         selected_value = None
-        if len(self.canvas.selected_shapes) == 1:
-            selected_value = self._realisr_recoverable(
-                self.canvas.selected_shapes[0]
-            )
+        selected_shapes = self.canvas.selected_shapes
+        selected_values = {
+            self._realisr_recoverable(shape) for shape in selected_shapes
+        }
+        if len(selected_values) == 1:
+            selected_value = next(iter(selected_values))
         self.realisr_recoverability_group.setExclusive(False)
         for value, button in self.realisr_recoverability_buttons.items():
             button.setChecked(value == selected_value)
             button.setEnabled(
-                self.realisr_variant != "HR"
-                and len(self.canvas.selected_shapes) == 1
+                self.realisr_variant != "HR" and bool(selected_shapes)
             )
         self.realisr_recoverability_group.setExclusive(True)
 

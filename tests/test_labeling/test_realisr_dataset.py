@@ -351,6 +351,70 @@ class RealISRDatasetTest(unittest.TestCase):
             dataset.dashboard_stats(), dataset._dashboard_stats_uncached()
         )
 
+    def test_batch_recoverability_is_atomic_and_refreshes_stats_once(self):
+        dataset = RealISRDataset(self.root, "text")
+        dataset.set_hr_records(
+            "000001.png",
+            [
+                self.text_record(description="First"),
+                self.text_record(
+                    points=[[1, 1], [2, 1], [2, 2], [1, 2]],
+                    description="Second",
+                ),
+            ],
+        )
+        region_ids = [
+            record["region_id"]
+            for record in dataset.records_for("000001.png", "HR")
+        ]
+        revision = dataset._draft_revision
+
+        with (
+            mock.patch.object(
+                dataset, "mark_draft", wraps=dataset.mark_draft
+            ) as mark_draft,
+            mock.patch.object(
+                dataset,
+                "_refresh_sample_stats",
+                wraps=dataset._refresh_sample_stats,
+            ) as refresh_stats,
+        ):
+            self.assertTrue(
+                dataset.set_recoverable_many(
+                    "000001.png", "LR2", region_ids, 1
+                )
+            )
+
+        self.assertEqual(
+            [
+                record["recoverable"]
+                for record in dataset.records_for("000001.png", "LR2")
+            ],
+            [1, 1],
+        )
+        self.assertEqual(dataset._draft_revision, revision + 1)
+        mark_draft.assert_called_once_with("000001.png")
+        refresh_stats.assert_called_once()
+        self.assertFalse(
+            dataset.set_recoverable_many("000001.png", "LR2", region_ids, 1)
+        )
+        self.assertEqual(dataset._draft_revision, revision + 1)
+
+        with self.assertRaises(KeyError):
+            dataset.set_recoverable_many(
+                "000001.png",
+                "LR3",
+                [region_ids[0], "missing-region"],
+                2,
+            )
+        self.assertEqual(
+            [
+                record["recoverable"]
+                for record in dataset.records_for("000001.png", "LR3")
+            ],
+            [None, None],
+        )
+
     def test_save_draft_is_noop_without_a_new_revision(self):
         dataset = RealISRDataset(self.root, "text")
         self.add_record(dataset, self.text_record())

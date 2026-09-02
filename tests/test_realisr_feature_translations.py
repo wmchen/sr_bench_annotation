@@ -174,6 +174,37 @@ class RealISRFocusToolbarStructureTest(unittest.TestCase):
             ["fit_width", "focus_selected_object", "zoom"],
         )
 
+    def test_realisr_open_button_reuses_open_icon(self):
+        assignment = next(
+            node
+            for node in ast.walk(self.tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "open_realisr"
+                for target in node.targets
+            )
+        )
+        self.assertIsInstance(assignment.value, ast.Call)
+        self.assertEqual(assignment.value.args[3].value, "open")
+
+    def test_realisr_open_button_follows_open_directory(self):
+        assignment = next(
+            node
+            for node in ast.walk(self.tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Attribute) and target.attr == "tool"
+                for target in node.targets
+            )
+        )
+        action_names = [
+            element.id
+            for element in assignment.value.elts
+            if isinstance(element, ast.Name)
+        ]
+        open_dir_index = action_names.index("opendir")
+        self.assertEqual(action_names[open_dir_index + 1], "open_realisr")
+
     def test_view_controls_are_immediately_before_commit_button(self):
         layout_operations = []
         for node in ast.walk(self.tree):

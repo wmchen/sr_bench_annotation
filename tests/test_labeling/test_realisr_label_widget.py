@@ -248,7 +248,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 selected_shapes=[current_shape],
             ),
             realisr_dataset=SimpleNamespace(
-                set_recoverable=Mock(return_value=True)
+                set_recoverable_many=Mock(return_value=True)
             ),
             realisr_workspace=workspace,
             _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
@@ -267,6 +267,9 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         LabelingWidget.set_realisr_recoverable(widget, 1)
 
         self.assertEqual(current_shape.other_data["recoverable"], 1)
+        widget.realisr_dataset.set_recoverable_many.assert_called_once_with(
+            "sample.png", "LR2", ["region-current"], 1
+        )
         self.assertEqual(
             workspace.method_calls,
             [
@@ -276,8 +279,11 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         )
 
     def test_recoverability_does_not_focus_when_advancing_lr_variant(self):
-        current_shape = SimpleNamespace(
-            other_data={"region_id": "region-current", "recoverable": None}
+        first_shape = SimpleNamespace(
+            other_data={"region_id": "region-first", "recoverable": None}
+        )
+        last_shape = SimpleNamespace(
+            other_data={"region_id": "region-last", "recoverable": None}
         )
         workspace = Mock()
         widget = SimpleNamespace(
@@ -285,11 +291,11 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             realisr_variant="LR2",
             realisr_sample="sample.png",
             canvas=SimpleNamespace(
-                shapes=[current_shape],
-                selected_shapes=[current_shape],
+                shapes=[first_shape, last_shape],
+                selected_shapes=[first_shape, last_shape],
             ),
             realisr_dataset=SimpleNamespace(
-                set_recoverable=Mock(return_value=True)
+                set_recoverable_many=Mock(return_value=True)
             ),
             realisr_workspace=workspace,
             _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
@@ -309,8 +315,126 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         with patch.object(QtCore.QTimer, "singleShot") as single_shot:
             LabelingWidget.set_realisr_recoverable(widget, 1)
 
+        widget.realisr_dataset.set_recoverable_many.assert_called_once_with(
+            "sample.png", "LR2", ["region-first", "region-last"], 1
+        )
         workspace.focus_selected_object.assert_not_called()
         single_shot.assert_called_once()
+
+    def test_recoverability_updates_multiple_shapes_and_focuses_next_missing(
+        self,
+    ):
+        first = SimpleNamespace(
+            other_data={"region_id": "region-first", "recoverable": None}
+        )
+        next_shape = SimpleNamespace(
+            other_data={"region_id": "region-next", "recoverable": None}
+        )
+        last = SimpleNamespace(
+            other_data={"region_id": "region-last", "recoverable": 0}
+        )
+        workspace = Mock()
+        dataset = SimpleNamespace(set_recoverable_many=Mock(return_value=True))
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR3",
+            realisr_sample="sample.png",
+            canvas=SimpleNamespace(
+                shapes=[first, next_shape, last],
+                selected_shapes=[first, last],
+            ),
+            realisr_dataset=dataset,
+            realisr_workspace=workspace,
+            _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            apply_realisr_shape_color=Mock(),
+            dirty=False,
+            _realisr_draft_dirty=False,
+            actions=SimpleNamespace(save=SimpleNamespace(setEnabled=Mock())),
+            realisr_draft_timer=SimpleNamespace(start=Mock()),
+            update_realisr_ui=Mock(),
+            refresh_realisr_file_item=Mock(),
+        )
+
+        LabelingWidget.set_realisr_recoverable(widget, 2)
+
+        dataset.set_recoverable_many.assert_called_once_with(
+            "sample.png",
+            "LR3",
+            ["region-first", "region-last"],
+            2,
+        )
+        self.assertEqual(first.other_data["recoverable"], 2)
+        self.assertEqual(last.other_data["recoverable"], 2)
+        self.assertEqual(
+            widget.apply_realisr_shape_color.call_args_list,
+            [call(first), call(last)],
+        )
+        widget.realisr_draft_timer.start.assert_called_once_with()
+        widget.update_realisr_ui.assert_called_once_with()
+        widget.refresh_realisr_file_item.assert_called_once_with("sample.png")
+        self.assertEqual(
+            workspace.method_calls,
+            [
+                call.select_region("region-next"),
+                call.focus_selected_object(),
+            ],
+        )
+
+    def test_recoverability_buttons_support_uniform_and_mixed_multi_select(
+        self,
+    ):
+        first = SimpleNamespace(other_data={"recoverable": 1})
+        second = SimpleNamespace(other_data={"recoverable": 2})
+        buttons = {
+            value: SimpleNamespace(setChecked=Mock(), setEnabled=Mock())
+            for value in (0, 1, 2)
+        }
+        dataset = SimpleNamespace(
+            variant_progress=Mock(return_value=(2, 2)),
+            dashboard_stats=Mock(
+                return_value={
+                    "sample_groups": 1,
+                    "image_files": 4,
+                    "instances": 2,
+                    "completed_instances": 0,
+                    "recoverability_assigned": 2,
+                    "recoverability_total": 6,
+                    "committed_samples": 0,
+                }
+            ),
+            attribute="text",
+        )
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_sample="sample.png",
+            realisr_variant="LR2",
+            realisr_dataset=dataset,
+            canvas=SimpleNamespace(selected_shapes=[first, second]),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            realisr_recoverability_group=SimpleNamespace(setExclusive=Mock()),
+            realisr_recoverability_buttons=buttons,
+            realisr_progress=SimpleNamespace(setText=Mock()),
+            realisr_dashboard=SimpleNamespace(setText=Mock()),
+            tr=lambda text: text,
+        )
+
+        LabelingWidget.update_realisr_ui(widget)
+
+        for button in buttons.values():
+            button.setChecked.assert_called_once_with(False)
+            button.setEnabled.assert_called_once_with(True)
+
+        second.other_data["recoverable"] = 1
+        LabelingWidget.update_realisr_ui(widget)
+
+        self.assertEqual(buttons[0].setChecked.call_args, call(False))
+        self.assertEqual(buttons[1].setChecked.call_args, call(True))
+        self.assertEqual(buttons[2].setChecked.call_args, call(False))
 
     def test_next_uncommitted_sample_skips_committed_without_wrapping(self):
         committed = {"000002.png", "000003.png", "000005.png"}
