@@ -462,6 +462,168 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         widget.add_label.assert_called_once_with(final_shape)
         widget.set_dirty.assert_called_once_with()
 
+    def test_text_new_shape_applies_hr_description_color_immediately(self):
+        draft_shape = Shape(label="", shape_type="quadrilateral")
+        final_shape = Shape(label="", shape_type="quadrilateral")
+        canvas = SimpleNamespace(
+            shapes=[draft_shape],
+            set_last_label=Mock(return_value=final_shape),
+            drawing=Mock(return_value=False),
+        )
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="HR",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            canvas=canvas,
+            unique_label_list=SimpleNamespace(
+                selectedItems=Mock(return_value=[])
+            ),
+            _config={
+                "display_label_popup": True,
+                "auto_use_last_gid": False,
+                "auto_use_last_label": False,
+            },
+            find_last_label=Mock(return_value=None),
+            digit_to_label=None,
+            label_dialog=SimpleNamespace(
+                edit=SimpleNamespace(
+                    text=Mock(return_value=""), setText=Mock()
+                ),
+                pop_up=Mock(
+                    return_value=("text", {}, None, "", False, [])
+                ),
+            ),
+            validate_label=Mock(return_value=True),
+            attributes={},
+            label_list=SimpleNamespace(clearSelection=Mock()),
+            add_label=Mock(),
+            apply_realisr_shape_color=Mock(),
+            actions=SimpleNamespace(
+                edit_mode=SimpleNamespace(setEnabled=Mock()),
+                undo_last_point=SimpleNamespace(setEnabled=Mock()),
+                undo=SimpleNamespace(setEnabled=Mock()),
+            ),
+            set_dirty=Mock(),
+        )
+
+        LabelingWidget.new_shape(widget)
+
+        self.assertEqual(final_shape.label, "text")
+        self.assertEqual(final_shape.description, "")
+        self.assertEqual(final_shape.other_data["recoverable"], 0)
+        widget.apply_realisr_shape_color.assert_called_once_with(
+            final_shape, variant="HR"
+        )
+
+    def test_hr_text_color_depends_on_non_whitespace_description(self):
+        widget = SimpleNamespace(
+            realisr_variant="HR",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            label_list=SimpleNamespace(
+                find_item_by_shape=Mock(return_value=None)
+            ),
+            realisr_mode=False,
+        )
+
+        for description in (None, "", " \n\t"):
+            shape = Shape(label="text", description=description)
+            shape.other_data["recoverable"] = 0
+            LabelingWidget.apply_realisr_shape_color(
+                widget, shape, variant="HR"
+            )
+            self.assertEqual(shape.line_color.getRgb()[:3], (128, 128, 128))
+
+        described = Shape(label="text", description="Floor")
+        described.other_data["recoverable"] = 0
+        LabelingWidget.apply_realisr_shape_color(
+            widget, described, variant="HR"
+        )
+        self.assertEqual(described.line_color.getRgb()[:3], (46, 160, 67))
+
+    def test_empty_description_does_not_change_lr_or_face_colors(self):
+        widget = SimpleNamespace(
+            realisr_variant="HR",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            label_list=SimpleNamespace(
+                find_item_by_shape=Mock(return_value=None)
+            ),
+            realisr_mode=False,
+        )
+        expected_lr_colors = {
+            None: (128, 128, 128),
+            0: (46, 160, 67),
+            1: (230, 126, 34),
+            2: (220, 53, 69),
+        }
+        for recoverable, expected_color in expected_lr_colors.items():
+            lr_shape = Shape(label="", description="")
+            lr_shape.other_data["recoverable"] = recoverable
+            LabelingWidget.apply_realisr_shape_color(
+                widget, lr_shape, variant="LR2"
+            )
+            self.assertEqual(
+                lr_shape.line_color.getRgb()[:3], expected_color
+            )
+
+        widget.realisr_dataset.attribute = "face"
+        face_shape = Shape(label="face", description="")
+        face_shape.other_data["recoverable"] = 0
+        LabelingWidget.apply_realisr_shape_color(
+            widget, face_shape, variant="HR"
+        )
+        self.assertEqual(face_shape.line_color.getRgb()[:3], (46, 160, 67))
+
+    def test_hr_text_edit_recolors_on_add_and_clear(self):
+        shape = Shape(label="text", description="")
+        shape.other_data["recoverable"] = 0
+        canvas_update = Mock()
+        text_edit = SimpleNamespace(toPlainText=Mock(return_value="Floor"))
+
+        def apply_color(target, variant=None):
+            LabelingWidget.apply_realisr_shape_color(
+                widget, target, variant=variant
+            )
+
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="HR",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            shape_text_edit=text_edit,
+            canvas=SimpleNamespace(
+                current=None,
+                editing=Mock(return_value=True),
+                selected_shapes=[shape],
+            ),
+            other_data={},
+            _realisr_recoverable=lambda target: target.other_data.get(
+                "recoverable"
+            ),
+            label_list=SimpleNamespace(
+                find_item_by_shape=Mock(return_value=None)
+            ),
+            realisr_workspace=SimpleNamespace(
+                canvases={"HR": SimpleNamespace(update=canvas_update)}
+            ),
+            apply_realisr_shape_color=apply_color,
+            set_dirty=Mock(),
+        )
+
+        LabelingWidget.shape_text_changed(widget)
+        self.assertEqual(shape.description, "Floor")
+        self.assertEqual(shape.line_color.getRgb()[:3], (46, 160, 67))
+
+        text_edit.toPlainText.return_value = "  "
+        LabelingWidget.shape_text_changed(widget)
+        self.assertEqual(shape.description, "  ")
+        self.assertEqual(shape.line_color.getRgb()[:3], (128, 128, 128))
+        self.assertEqual(canvas_update.call_count, 2)
+
     def test_face_mode_rejects_quadrilateral_draw_mode(self):
         canvas = SimpleNamespace(set_editing=Mock())
         widget = SimpleNamespace(

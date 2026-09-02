@@ -4375,7 +4375,14 @@ class LabelingWidget(LabelDialog):
             shape.difficult = difficult
             shape.kie_linking = kie_linking
 
-            self._update_shape_color(shape)
+            if (
+                getattr(self, "realisr_mode", False)
+                and self.realisr_variant == "HR"
+                and self.realisr_dataset.attribute == "text"
+            ):
+                self.apply_realisr_shape_color(shape, variant="HR")
+            else:
+                self._update_shape_color(shape)
 
             item = self.label_list.find_item_by_shape(shape)
             if item is not None:
@@ -4484,7 +4491,10 @@ class LabelingWidget(LabelDialog):
                 unique_label_item, shape.label, rgb, LABEL_OPACITY
             )
 
-        self._update_shape_color(shape)
+        if self.realisr_mode and self.realisr_variant == "HR":
+            self.apply_realisr_shape_color(shape, variant="HR")
+        else:
+            self._update_shape_color(shape)
         if shape.group_id is None:
             color = shape.fill_color.getRgb()[:3]
             item.setText(_format_label_list_text(shape.label, shape.group_id))
@@ -5618,6 +5628,9 @@ class LabelingWidget(LabelDialog):
             shape.difficult = difficult
             shape.kie_linking = kie_linking
             self.add_label(shape)
+            if self.realisr_mode and self.realisr_variant == "HR":
+                shape.other_data["recoverable"] = 0
+                self.apply_realisr_shape_color(shape, variant="HR")
             self.actions.edit_mode.setEnabled(True)
             self.actions.undo_last_point.setEnabled(False)
             self.actions.undo.setEnabled(True)
@@ -7312,7 +7325,7 @@ class LabelingWidget(LabelDialog):
             shape.locked = True
         else:
             shape.locked = False
-        self.apply_realisr_shape_color(shape)
+        self.apply_realisr_shape_color(shape, variant=variant)
         return shape
 
     def _realisr_canvas_records(self):
@@ -7449,7 +7462,7 @@ class LabelingWidget(LabelDialog):
                         update_last_label=False,
                         refresh_filters=False,
                     )
-                    self.apply_realisr_shape_color(shape)
+                    self.apply_realisr_shape_color(shape, variant="HR")
                     item = self.label_list.find_item_by_shape(shape)
                     if item is not None:
                         color = shape.fill_color.getRgb()[:3]
@@ -7527,7 +7540,7 @@ class LabelingWidget(LabelDialog):
                 for shape, record in zip(hr_canvas.shapes, normalized):
                     shape.other_data["region_id"] = record["region_id"]
                     shape.other_data["recoverable"] = record["recoverable"]
-                    self.apply_realisr_shape_color(shape)
+                    self.apply_realisr_shape_color(shape, variant="HR")
                 self.realisr_workspace.rebuild_region_index("HR")
                 self.refresh_realisr_dependent_canvases()
                 self._realisr_hr_sync_dirty = False
@@ -7649,14 +7662,26 @@ class LabelingWidget(LabelDialog):
                 ),
             )
 
-    def apply_realisr_shape_color(self, shape):
+    def apply_realisr_shape_color(self, shape, variant=None):
         colors = {
             None: QtGui.QColor(128, 128, 128),
             0: QtGui.QColor(46, 160, 67),
             1: QtGui.QColor(230, 126, 34),
             2: QtGui.QColor(220, 53, 69),
         }
-        color = colors.get(self._realisr_recoverable(shape), colors[None])
+        target_variant = variant or self.realisr_variant
+        description = getattr(shape, "description", None)
+        is_undescribed_hr_text = (
+            target_variant == "HR"
+            and self.realisr_dataset.attribute == "text"
+            and not str(description or "").strip()
+        )
+        recoverable = (
+            None
+            if is_undescribed_hr_text
+            else self._realisr_recoverable(shape)
+        )
+        color = colors.get(recoverable, colors[None])
         shape.line_color = color
         shape.vertex_fill_color = color
         shape.fill_color = QtGui.QColor(
@@ -7668,7 +7693,7 @@ class LabelingWidget(LabelDialog):
                 QtGui.QColor(color.red(), color.green(), color.blue(), 55)
             )
         if self.realisr_mode:
-            self.realisr_workspace.canvases[self.realisr_variant].update()
+            self.realisr_workspace.canvases[target_variant].update()
 
     def refresh_realisr_label_display(self):
         if not self.realisr_mode:
@@ -8564,12 +8589,22 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode and self.realisr_dataset.attribute == "face":
             return
         description = self.shape_text_edit.toPlainText()
+        shape = None
         if self.canvas.current is not None:
-            self.canvas.current.description = description
+            shape = self.canvas.current
+            shape.description = description
         elif self.canvas.editing() and len(self.canvas.selected_shapes) == 1:
-            self.canvas.selected_shapes[0].description = description
+            shape = self.canvas.selected_shapes[0]
+            shape.description = description
         else:
             self.other_data["description"] = description
+        if (
+            shape is not None
+            and self.realisr_mode
+            and self.realisr_variant == "HR"
+            and self.realisr_dataset.attribute == "text"
+        ):
+            self.apply_realisr_shape_color(shape, variant="HR")
         self.set_dirty()
 
     def set_text_editing(self, enable):
