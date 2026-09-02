@@ -391,7 +391,7 @@ X-AnyLabeling 支持调整当前图片的显示效果和标注对象的可见性
 - 工作区以 2×2 布局同时显示四个倍率；单击视图即可激活，缩放、滚动和拖动画面会同步到其他视图。
 - 文本属性以 HR 作为几何和文字主数据源，可创建矩形或四边形；类别固定为 `label: "text"`，OCR 真值保存在 `description`。
 - 人脸属性在 HR 中只允许水平矩形；新框自动使用 `label: "face"` 和空 `description`，不会弹出标签或描述输入框。
-- LR 框按实际图像尺寸自动映射。在 LR 视图选中区域后按 `0`、`1`、`2` 设置可恢复度。文本属性可按住 `R` 临时查看 OCR 真值，人脸属性不响应文字揭示。
+- LR 框按实际图像尺寸自动映射，画布只显示标注框，不显示标签或描述覆盖层。在 LR 视图选中区域后按 `0`、`1`、`2` 设置可恢复度；文本属性会在只读的“文本描述”面板中显示所选区域的 OCR 真值。
 - 未完成进度自动保存在 `annotations/.realisr_draft.json`；四倍率填写完整后点击“确认当前组”，正式结果写入 `annotations/HR`、`annotations/LR2`、`annotations/LR3` 和 `annotations/LR4`。提交成功后自动移除当前样本的草稿记录和 `.pre_realisr.bak` 临时备份；若提交失败则保留它们用于恢复。
 - 所选属性会写入 `annotations/RealISRMeta.json`、草稿和每个正式 JSON。同一目录若用另一属性打开会被拒绝；旧版未记录属性的 Real-ISR X-AnyLabeling JSON 按文本属性迁移。
 - Real-ISR 只读取 X-AnyLabeling JSON，目录中的 `Label.txt` 会被忽略。

@@ -372,26 +372,31 @@ class RealISRWorkspaceTest(unittest.TestCase):
         self.assertFalse(self.workspace.focus_selected_object())
         self.assertEqual(self.workspace.zoom_factor, original_zoom)
 
-    def test_lr_truth_is_revealed_only_in_active_pane(self):
+    def test_r_key_does_not_reveal_lr_truth(self):
         self.workspace.set_active_variant("LR2")
-        self.workspace.set_lr_text_revealed(True)
-        self.assertEqual(
-            self.workspace.canvases["LR2"].shapes[0].label, "truth"
-        )
-        self.assertEqual(
-            self.workspace.canvases["LR3"].shapes[0].label,
-            "",
-        )
-        self.workspace.set_lr_text_revealed(False)
-        self.assertEqual(
-            self.workspace.canvases["LR2"].shapes[0].label,
-            "",
-        )
-        for variant in ("LR2", "LR3", "LR4"):
-            self.assertEqual(
-                self.workspace.canvases[variant].shapes[0].description,
-                "",
+        canvas = self.workspace.canvases["LR2"]
+        canvas.keyPressEvent(
+            QtGui.QKeyEvent(
+                QtCore.QEvent.Type.KeyPress,
+                QtCore.Qt.Key.Key_R,
+                QtCore.Qt.KeyboardModifier.NoModifier,
             )
+        )
+        canvas.keyReleaseEvent(
+            QtGui.QKeyEvent(
+                QtCore.QEvent.Type.KeyRelease,
+                QtCore.Qt.Key.Key_R,
+                QtCore.Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        for variant in ("LR2", "LR3", "LR4"):
+            shape = self.workspace.canvases[variant].shapes[0]
+            self.assertEqual(shape.label, "")
+            self.assertEqual(
+                shape.description, ""
+            )
+            self.assertEqual(shape.other_data["realisr_text"], "truth")
 
     def test_lr_canvases_are_read_only_and_shapes_are_locked(self):
         for variant in ("LR2", "LR3", "LR4"):
@@ -399,14 +404,16 @@ class RealISRWorkspaceTest(unittest.TestCase):
             self.assertTrue(canvas.realisr_read_only)
             self.assertTrue(canvas.shapes[0].locked)
 
-    def test_hr_label_overlay_is_hidden_without_changing_label_data(self):
+    def test_lr_canvases_show_only_annotation_geometry(self):
         hr_canvas = self.workspace.canvases["HR"]
 
         self.assertFalse(hr_canvas.show_labels)
         self.assertTrue(hr_canvas.show_texts)
         self.assertEqual(hr_canvas.shapes[0].label, "text")
         for variant in ("LR2", "LR3", "LR4"):
-            self.assertTrue(self.workspace.canvases[variant].show_labels)
+            canvas = self.workspace.canvases[variant]
+            self.assertFalse(canvas.show_labels)
+            self.assertFalse(canvas.show_texts)
 
     def test_crosshair_is_visible_only_while_drawing(self):
         for canvas in self.workspace.canvases.values():

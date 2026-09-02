@@ -19,7 +19,6 @@ class RealISRCanvas(Canvas):
     activated = QtCore.pyqtSignal()
     blank_double_clicked = QtCore.pyqtSignal()
     recoverability_requested = QtCore.pyqtSignal(int)
-    reveal_text_changed = QtCore.pyqtSignal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -107,18 +106,7 @@ class RealISRCanvas(Canvas):
             self.recoverability_requested.emit(key_map[event.key()])
             event.accept()
             return
-        if event.key() == Qt.Key.Key_R and not event.isAutoRepeat():
-            self.reveal_text_changed.emit(True)
-            event.accept()
-            return
         super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key.Key_R and not event.isAutoRepeat():
-            self.reveal_text_changed.emit(False)
-            event.accept()
-            return
-        super().keyReleaseEvent(event)
 
 
 class RealISRWorkspace(QtWidgets.QWidget):
@@ -132,7 +120,6 @@ class RealISRWorkspace(QtWidgets.QWidget):
     selection_changed = QtCore.pyqtSignal(str, list)
     single_view_changed = QtCore.pyqtSignal(bool)
     recoverability_requested = QtCore.pyqtSignal(int)
-    reveal_text_changed = QtCore.pyqtSignal(bool)
 
     def __init__(self, canvas_options, parent=None):
         super().__init__(parent)
@@ -156,11 +143,11 @@ class RealISRWorkspace(QtWidgets.QWidget):
             self._layout.setColumnStretch(index, 1)
         for index, variant in enumerate(VARIANTS):
             canvas = RealISRCanvas(parent=parent, **canvas_options)
-            # The HR region label (normally the literal "text") obscures the
-            # source image.  Keep the label data intact, but do not render its
-            # label overlay in the HR pane.  LR labels remain available for
-            # the hold-to-reveal interaction.
-            canvas.show_labels = variant != "HR"
+            # Real-ISR canvases show only annotation geometry. Keep label and
+            # description data intact, but reserve text display for the label
+            # list (region IDs) and the read-only LR description panel.
+            canvas.show_labels = False
+            canvas.show_texts = variant == "HR"
             canvas.activated.connect(
                 functools.partial(self.set_active_variant, variant)
             )
@@ -179,7 +166,6 @@ class RealISRWorkspace(QtWidgets.QWidget):
             canvas.recoverability_requested.connect(
                 self.recoverability_requested.emit
             )
-            canvas.reveal_text_changed.connect(self.reveal_text_changed.emit)
 
             scroll_area = QtWidgets.QScrollArea()
             scroll_area.setWidget(canvas)
@@ -364,7 +350,6 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.zoom_factor = 1.0
         self.show_tiled_views(preserve_view=False)
         self.set_active_variant("HR")
-        self.set_lr_text_revealed(False)
         QtCore.QTimer.singleShot(0, self.fit_canvases)
 
     def fit_canvases(self):
@@ -650,16 +635,6 @@ class RealISRWorkspace(QtWidgets.QWidget):
                 )
         finally:
             self._syncing_scroll = False
-
-    def set_lr_text_revealed(self, revealed):
-        for variant in VARIANTS[1:]:
-            canvas = self.canvases[variant]
-            active_reveal = revealed and variant == self.active_variant
-            for shape in canvas.shapes:
-                truth = shape.other_data.get("realisr_text", "")
-                shape.label = truth if active_reveal else ""
-            if variant in self._displayed_variants():
-                canvas.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

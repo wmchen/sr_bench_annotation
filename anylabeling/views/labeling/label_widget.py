@@ -241,7 +241,6 @@ class LabelingWidget(LabelDialog):
         self.realisr_dataset = None
         self.realisr_sample = None
         self.realisr_variant = "HR"
-        self.realisr_reveal_text = False
         self._realisr_description_was_visible = None
         self._realisr_loading = False
         self._realisr_hr_dirty = False
@@ -501,9 +500,6 @@ class LabelingWidget(LabelDialog):
         )
         self.realisr_workspace.recoverability_requested.connect(
             self.set_realisr_recoverable
-        )
-        self.realisr_workspace.reveal_text_changed.connect(
-            self.set_realisr_text_revealed
         )
         for realisr_canvas in self.realisr_workspace.canvases.values():
             realisr_canvas.new_shape.connect(self.new_shape)
@@ -6416,16 +6412,6 @@ class LabelingWidget(LabelDialog):
                 self.set_realisr_recoverable(recoverability_keys[event.key()])
                 event.accept()
                 return
-            if (
-                self.realisr_variant != "HR"
-                and self.realisr_dataset.attribute == "text"
-                and event.key() == Qt.Key.Key_R
-                and not event.isAutoRepeat()
-            ):
-                self.realisr_reveal_text = True
-                self.refresh_realisr_label_display()
-                event.accept()
-                return
         if event.key() == Qt.Key.Key_Escape:
             if getattr(self.canvas, "is_brush_mode", False):
                 self.canvas.cancel_brush_mode()
@@ -6434,19 +6420,6 @@ class LabelingWidget(LabelDialog):
             event.accept()
             return
         super(LabelingWidget, self).keyPressEvent(event)
-
-    def keyReleaseEvent(self, event):
-        if (
-            self.realisr_mode
-            and self.realisr_dataset.attribute == "text"
-            and event.key() == Qt.Key.Key_R
-            and not event.isAutoRepeat()
-        ):
-            self.realisr_reveal_text = False
-            self.refresh_realisr_label_display()
-            event.accept()
-            return
-        super(LabelingWidget, self).keyReleaseEvent(event)
 
     def resizeEvent(self, _):
         if self.realisr_mode:
@@ -7167,7 +7140,6 @@ class LabelingWidget(LabelDialog):
         self.realisr_dataset = dataset
         self.realisr_sample = None
         self.realisr_variant = "HR"
-        self.realisr_reveal_text = False
         self._realisr_empty_confirmed.clear()
         self._realisr_completion_notified.clear()
         self._realisr_hr_dirty = False
@@ -7270,7 +7242,7 @@ class LabelingWidget(LabelDialog):
             self.auto_labeling_widget.leave_realisr_context()
             self.realisr_sample = None
             self.realisr_variant = "HR"
-            self.realisr_reveal_text = False
+            self.shape_text_edit.setReadOnly(False)
             self._realisr_hr_dirty = False
             self._realisr_hr_sync_dirty = False
             self._realisr_draft_dirty = False
@@ -7316,10 +7288,9 @@ class LabelingWidget(LabelDialog):
                 shape.other_data["realisr_text"] = record.get(
                     "description", ""
                 )
-            # Keep LR canvases visually unobstructed. The source text is
-            # revealed temporarily through ``shape.label`` while R is held;
-            # the persistent description must also be cleared because Canvas
-            # can render descriptions independently from labels.
+            # Keep LR canvases visually unobstructed. The source text remains
+            # available through ``realisr_text`` for the read-only description
+            # panel, while Canvas receives no label or description to render.
             shape.label = ""
             shape.description = ""
             shape.locked = True
@@ -7428,9 +7399,8 @@ class LabelingWidget(LabelDialog):
         self.image_data = None
         self.label_file = None
         self.other_data = {}
-        self.realisr_reveal_text = False
         self.refresh_realisr_active_label_list()
-        self.refresh_realisr_label_display()
+        self.set_text_editing(True)
         self.apply_realisr_action_state()
         self.update_realisr_ui()
         self.update_progress_title()
@@ -7501,7 +7471,6 @@ class LabelingWidget(LabelDialog):
                 ]
             )
             self.realisr_workspace.rebuild_region_index(variant)
-        self.realisr_workspace.set_lr_text_revealed(False)
         if selected_ids:
             self.realisr_workspace.select_region(
                 next(iter(selected_ids)), notify=False
@@ -7695,49 +7664,15 @@ class LabelingWidget(LabelDialog):
         if self.realisr_mode:
             self.realisr_workspace.canvases[target_variant].update()
 
-    def refresh_realisr_label_display(self):
-        if not self.realisr_mode:
-            return
-        if self.realisr_dataset.attribute != "text":
-            self.realisr_reveal_text = False
-            return
-        self.realisr_workspace.set_lr_text_revealed(self.realisr_reveal_text)
-        if self.realisr_variant == "HR":
-            return
-        for shape in self.canvas.shapes:
-            item = self.label_list.find_item_by_shape(shape)
-            if item is not None:
-                item.setText(
-                    shape.other_data.get("realisr_text", "")
-                    if self.realisr_reveal_text
-                    else self._realisr_region_id(shape) or ""
-                )
-
-    def set_realisr_text_revealed(self, revealed):
-        if (
-            not self.realisr_mode
-            or self.realisr_variant == "HR"
-            or self.realisr_dataset.attribute != "text"
-        ):
-            return
-        self.realisr_reveal_text = bool(revealed)
-        self.refresh_realisr_label_display()
-
     def update_realisr_ui(self):
         if not self.realisr_mode or not self.realisr_sample:
             return
         total, complete = self.realisr_dataset.variant_progress(
             self.realisr_sample, self.realisr_variant
         )
-        hint = (
-            self.tr("; hold R to reveal text")
-            if self.realisr_variant != "HR"
-            and self.realisr_dataset.attribute == "text"
-            else ""
-        )
         self.realisr_progress.setText(
-            self.tr("%s: %d/%d completed%s")
-            % (self.realisr_variant, complete, total, hint)
+            self.tr("%s: %d/%d completed")
+            % (self.realisr_variant, complete, total)
         )
         selected_value = None
         if len(self.canvas.selected_shapes) == 1:
@@ -7877,7 +7812,8 @@ class LabelingWidget(LabelDialog):
         self.actions.toggle_auto_labeling_widget.setEnabled(True)
         self.update_realisr_focus_action_state()
         self.actions.shape_manager.setEnabled(False)
-        self.shape_text_edit.setDisabled(not editable or is_face)
+        self.shape_text_edit.setDisabled(is_face)
+        self.shape_text_edit.setReadOnly(not editable and not is_face)
         for action in self.actions.zoom_actions:
             action.setEnabled(False)
         for index in range(10):
@@ -8610,7 +8546,10 @@ class LabelingWidget(LabelDialog):
             self.set_dirty()
 
     def shape_text_changed(self):
-        if self.realisr_mode and self.realisr_dataset.attribute == "face":
+        if self.realisr_mode and (
+            self.realisr_variant != "HR"
+            or self.realisr_dataset.attribute == "face"
+        ):
             return
         description = self.shape_text_edit.toPlainText()
         shape = None
@@ -8633,24 +8572,40 @@ class LabelingWidget(LabelDialog):
 
     def set_text_editing(self, enable):
         """Set text editing."""
-        if self.realisr_mode and self.realisr_dataset.attribute == "face":
+        is_realisr_face = (
+            self.realisr_mode and self.realisr_dataset.attribute == "face"
+        )
+        is_realisr_lr_text = (
+            self.realisr_mode
+            and self.realisr_variant != "HR"
+            and self.realisr_dataset.attribute == "text"
+        )
+        if is_realisr_face:
             enable = False
         if enable:
             # Enable text editing and set shape text from selected shape
             if len(self.canvas.selected_shapes) == 1:
                 self.shape_text_label.setText(self.tr("Object Description"))
+                shape = self.canvas.selected_shapes[0]
+                description = (
+                    shape.other_data.get("realisr_text", "")
+                    if is_realisr_lr_text
+                    else shape.description or ""
+                )
                 with QtCore.QSignalBlocker(self.shape_text_edit):
-                    self.shape_text_edit.setPlainText(
-                        self.canvas.selected_shapes[0].description or ""
-                    )
+                    self.shape_text_edit.setPlainText(description)
             else:
                 self.shape_text_label.setText(self.tr("Image Description"))
                 with QtCore.QSignalBlocker(self.shape_text_edit):
                     self.shape_text_edit.setPlainText(
-                        self.other_data.get("description", "")
+                        ""
+                        if is_realisr_lr_text
+                        else self.other_data.get("description", "")
                     )
+            self.shape_text_edit.setReadOnly(is_realisr_lr_text)
             self.shape_text_edit.setDisabled(False)
         else:
+            self.shape_text_edit.setReadOnly(False)
             self.shape_text_edit.setDisabled(True)
             self.shape_text_label.setText(self.tr("Description"))
             with QtCore.QSignalBlocker(self.shape_text_edit):

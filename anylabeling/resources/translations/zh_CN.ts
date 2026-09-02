@@ -5172,10 +5172,6 @@ Open each corresponding image and save it again to clear the redundant draft.</s
       <translation>Real-ISR：在 HR 绘制人脸矩形框，在 LR 填写 0/1/2</translation>
     </message>
     <message>
-      <source>; hold R to reveal text</source>
-      <translation>；按住 R 临时显示文字</translation>
-    </message>
-    <message>
       <source>LR annotation complete</source>
       <translation>LR 标注已完成</translation>
     </message>
@@ -5220,8 +5216,8 @@ Open each corresponding image and save it again to clear the redundant draft.</s
       <translation>无法保存 Real-ISR 草稿：%s</translation>
     </message>
     <message>
-      <source>%s: %d/%d completed%s</source>
-      <translation>%s：已完成 %d/%d%s</translation>
+      <source>%s: %d/%d completed</source>
+      <translation>%s：已完成 %d/%d</translation>
     </message>
     <message>
       <source>Attribute: %s

@@ -83,6 +83,14 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
         self.assertEqual(labeling.get("Focus Selected Object"), "聚焦选中对象")
         self.assertEqual(settings.get("Focus Selected Object"), "聚焦选中对象")
 
+    def test_lr_progress_no_longer_mentions_temporary_text_reveal(self):
+        translations = self.translations_for("LabelingWidget")
+        self.assertEqual(
+            translations.get("%s: %d/%d completed"),
+            "%s：已完成 %d/%d",
+        )
+        self.assertNotIn("; hold R to reveal text", translations)
+
     def test_multiview_button_is_localized_in_english_and_chinese(self):
         chinese = self.translations_for("LabelingWidget")
         english_catalog = (
@@ -234,6 +242,10 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
             ): "确认全图推理",
             ("LabelingWidget", "Focus Selected Object"): "聚焦选中对象",
             ("LabelingWidget", "Tile Multiple Views"): "多视图平铺",
+            (
+                "LabelingWidget",
+                "%s: %d/%d completed",
+            ): "%s：已完成 %d/%d",
             (
                 "LabelingWidget",
                 "Redundant Real-ISR drafts",

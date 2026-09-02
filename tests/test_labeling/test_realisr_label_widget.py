@@ -357,7 +357,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 realisr_dataset=SimpleNamespace(),
                 _sync_canvas_view_actions=Mock(),
                 refresh_realisr_active_label_list=Mock(),
-                refresh_realisr_label_display=Mock(),
+                set_text_editing=Mock(),
                 apply_realisr_action_state=Mock(),
                 update_realisr_ui=Mock(),
                 update_progress_title=Mock(),
@@ -368,11 +368,13 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         clean.flush_realisr_draft.assert_not_called()
         self.assertIs(clean.canvas, clean.realisr_workspace.canvases["LR2"])
         clean._sync_canvas_view_actions.assert_called_once_with()
+        clean.set_text_editing.assert_called_once_with(True)
 
         dirty = make_widget(True)
         LabelingWidget.activate_realisr_variant(dirty, "LR2")
         dirty.flush_realisr_draft.assert_called_once_with()
         dirty._sync_canvas_view_actions.assert_called_once_with()
+        dirty.set_text_editing.assert_called_once_with(True)
 
     def test_canvas_view_actions_match_active_canvas_state(self):
         states = {
@@ -627,6 +629,93 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         self.assertEqual(shape.description, "  ")
         self.assertEqual(shape.line_color.getRgb()[:3], (128, 128, 128))
         self.assertEqual(canvas_update.call_count, 2)
+
+    def test_lr_text_description_is_visible_read_only_and_clears_for_multi_select(
+        self,
+    ):
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            app = QtWidgets.QApplication([])
+        first = Shape(label="", description="", shape_type="quadrilateral")
+        first.other_data = {"realisr_text": "Floor"}
+        second = Shape(label="", description="", shape_type="quadrilateral")
+        second.other_data = {"realisr_text": "Room"}
+        text_edit = QtWidgets.QPlainTextEdit()
+        text_label = QtWidgets.QLabel()
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR2",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            canvas=SimpleNamespace(selected_shapes=[first]),
+            shape_text_label=text_label,
+            shape_text_edit=text_edit,
+            other_data={},
+            tr=lambda text: text,
+        )
+
+        LabelingWidget.set_text_editing(widget, True)
+
+        self.assertEqual(text_edit.toPlainText(), "Floor")
+        self.assertEqual(text_label.text(), "Object Description")
+        self.assertTrue(text_edit.isReadOnly())
+        self.assertTrue(text_edit.isEnabled())
+        cursor = text_edit.textCursor()
+        cursor.select(cursor.SelectionType.Document)
+        self.assertTrue(cursor.hasSelection())
+
+        widget.canvas.selected_shapes = []
+        LabelingWidget.set_text_editing(widget, True)
+        self.assertEqual(text_edit.toPlainText(), "")
+
+        widget.canvas.selected_shapes = [first, second]
+        LabelingWidget.set_text_editing(widget, True)
+        self.assertEqual(text_edit.toPlainText(), "")
+        self.assertTrue(text_edit.isReadOnly())
+
+    def test_lr_description_change_cannot_modify_shape_or_dirty_state(self):
+        shape = Shape(label="", description="", shape_type="quadrilateral")
+        shape.other_data = {"realisr_text": "truth"}
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR3",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            shape_text_edit=SimpleNamespace(
+                toPlainText=Mock(return_value="attempted edit")
+            ),
+            canvas=SimpleNamespace(selected_shapes=[shape]),
+            set_dirty=Mock(),
+        )
+
+        LabelingWidget.shape_text_changed(widget)
+
+        self.assertEqual(shape.description, "")
+        self.assertEqual(shape.other_data["realisr_text"], "truth")
+        widget.set_dirty.assert_not_called()
+
+    def test_hr_text_description_remains_editable(self):
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            app = QtWidgets.QApplication([])
+        shape = Shape(
+            label="text", description="editable", shape_type="quadrilateral"
+        )
+        text_edit = QtWidgets.QPlainTextEdit()
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="HR",
+            realisr_dataset=SimpleNamespace(attribute="text"),
+            canvas=SimpleNamespace(selected_shapes=[shape]),
+            shape_text_label=QtWidgets.QLabel(),
+            shape_text_edit=text_edit,
+            other_data={},
+            tr=lambda text: text,
+        )
+
+        LabelingWidget.set_text_editing(widget, True)
+
+        self.assertEqual(text_edit.toPlainText(), "editable")
+        self.assertFalse(text_edit.isReadOnly())
+        self.assertTrue(text_edit.isEnabled())
 
     def test_face_mode_rejects_quadrilateral_draw_mode(self):
         canvas = SimpleNamespace(set_editing=Mock())

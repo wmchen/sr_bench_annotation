@@ -403,7 +403,7 @@ Choose `File` > `Open Real-ISR Dataset`, select the `Text` or `Face` attribute, 
 - The 2×2 workspace displays all variants together. Click a pane to activate it; zooming, scrolling, and panning are synchronized.
 - For `Text`, HR is the geometry and text master and supports rectangles and quadrilaterals. The category is `label: "text"`, and OCR truth is stored in `description`.
 - For `Face`, HR supports horizontal rectangles only. New regions use `label: "face"` and an empty `description`; no label or description dialog is shown.
-- LR regions are mapped using the actual image dimensions. Select an LR region and press `0`, `1`, or `2` to assign recoverability. Text regions can temporarily reveal OCR truth by holding `R`; face regions never reveal text.
+- LR regions are mapped using the actual image dimensions, and their canvases show annotation geometry without label or description overlays. Select an LR region and press `0`, `1`, or `2` to assign recoverability; for text tasks, the selected region's OCR truth is shown in the read-only description panel.
 - Partial work is saved to `annotations/.realisr_draft.json`. After all four variants are complete, confirm the group to write formal JSON under each `annotations/<variant>` directory. A successful commit removes that sample's draft entry and temporary `.pre_realisr.bak` files; a failed commit retains them for recovery.
 - The selected attribute is bound in `annotations/RealISRMeta.json`, the draft, and every formal JSON. Opening the same root with another attribute is rejected. Older Real-ISR X-AnyLabeling JSON without an attribute is treated as `Text`.
 - Real-ISR reads only X-AnyLabeling JSON. `Label.txt` files are ignored.
