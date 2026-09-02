@@ -2697,6 +2697,14 @@ class LabelingWidget(LabelDialog):
             self.update_realisr_variant_buttons
         )
         realisr_panel_layout.addLayout(realisr_variant_layout)
+        self.realisr_auto_focus_checkbox = QCheckBox(
+            self.tr("Enable auto focus")
+        )
+        self.realisr_auto_focus_checkbox.setChecked(True)
+        self.realisr_auto_focus_checkbox.toggled.connect(
+            self.save_realisr_auto_focus_setting
+        )
+        realisr_panel_layout.addWidget(self.realisr_auto_focus_checkbox)
         self.realisr_commit_button = QPushButton(
             self.tr("Confirm current group")
         )
@@ -2772,6 +2780,7 @@ class LabelingWidget(LabelDialog):
         self.settings = QtCore.QSettings("anylabeling", "anylabeling")
         self.recent_files = self.settings.value("recent_files", []) or []
         self.last_open_dir = self.settings.value("last_open_dir", None) or None
+        self.restore_realisr_auto_focus_setting()
 
         # Populate the File menu dynamically.
         self.update_file_menu()
@@ -7087,6 +7096,13 @@ class LabelingWidget(LabelDialog):
         for variant, button in self.realisr_variant_buttons.items():
             button.setChecked(variant == active_variant)
 
+    def restore_realisr_auto_focus_setting(self):
+        enabled = self.settings.value("realisr/auto_focus", True, type=bool)
+        self.realisr_auto_focus_checkbox.setChecked(enabled)
+
+    def save_realisr_auto_focus_setting(self, enabled):
+        self.settings.setValue("realisr/auto_focus", bool(enabled))
+
     def update_realisr_focus_action_state(self):
         enabled = self.realisr_mode and (
             self.realisr_workspace.can_focus_selected_object()
@@ -7579,10 +7595,11 @@ class LabelingWidget(LabelDialog):
             None,
         )
         if next_shape is not None:
-            self.realisr_workspace.select_region(
-                self._realisr_region_id(next_shape)
-            )
-            self.realisr_workspace.focus_selected_object()
+            if self.realisr_auto_focus_checkbox.isChecked():
+                self.realisr_workspace.select_region(
+                    self._realisr_region_id(next_shape)
+                )
+                self.realisr_workspace.focus_selected_object()
         elif self.realisr_variant in REALISR_VARIANTS[1:]:
             QtCore.QTimer.singleShot(
                 0,

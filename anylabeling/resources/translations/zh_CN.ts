@@ -5142,6 +5142,10 @@ Results have been saved to:
       <translation>确认当前组</translation>
     </message>
     <message>
+      <source>Enable auto focus</source>
+      <translation>启用自动聚焦</translation>
+    </message>
+    <message>
       <source>Tile Multiple Views</source>
       <translation>多视图平铺</translation>
     </message>

@@ -3697,6 +3697,10 @@ Press Enter to search.</source>
       <translation>Tile Multiple Views</translation>
     </message>
     <message>
+      <source>Enable auto focus</source>
+      <translation>Enable auto focus</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="1264" />
       <location filename="../../views/labeling/label_widget.py" line="1264" />
       <source>Set Brightness Contrast</source>

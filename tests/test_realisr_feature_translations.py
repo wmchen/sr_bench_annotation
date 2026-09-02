@@ -109,8 +109,12 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
         }
 
         self.assertEqual(chinese.get("Tile Multiple Views"), "多视图平铺")
+        self.assertEqual(chinese.get("Enable auto focus"), "启用自动聚焦")
         self.assertEqual(
             english.get("Tile Multiple Views"), "Tile Multiple Views"
+        )
+        self.assertEqual(
+            english.get("Enable auto focus"), "Enable auto focus"
         )
 
     def test_redundant_draft_warning_is_localized(self):
@@ -205,6 +209,18 @@ class RealISRFocusToolbarStructureTest(unittest.TestCase):
         open_dir_index = action_names.index("opendir")
         self.assertEqual(action_names[open_dir_index + 1], "open_realisr")
 
+    def test_auto_focus_checkbox_defaults_to_checked(self):
+        checked_call = next(
+            node
+            for node in ast.walk(self.tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "setChecked"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "realisr_auto_focus_checkbox"
+        )
+        self.assertEqual(checked_call.args[0].value, True)
+
     def test_view_controls_are_immediately_before_commit_button(self):
         layout_operations = []
         for node in ast.walk(self.tree):
@@ -240,9 +256,10 @@ class RealISRFocusToolbarStructureTest(unittest.TestCase):
                 ("addWidget", "realisr_dashboard"),
                 ("addWidget", "realisr_multiview_button"),
                 ("addLayout", "realisr_variant_layout"),
+                ("addWidget", "realisr_auto_focus_checkbox"),
                 ("addWidget", "realisr_commit_button"),
             ],
-            [controls[index : index + 4] for index in range(len(controls))],
+            [controls[index : index + 5] for index in range(len(controls))],
         )
 
 
@@ -273,6 +290,7 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
             ): "确认全图推理",
             ("LabelingWidget", "Focus Selected Object"): "聚焦选中对象",
             ("LabelingWidget", "Tile Multiple Views"): "多视图平铺",
+            ("LabelingWidget", "Enable auto focus"): "启用自动聚焦",
             (
                 "LabelingWidget",
                 "%s: %d/%d completed",
@@ -308,6 +326,12 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
                     "LabelingWidget", "Tile Multiple Views"
                 ),
                 "Tile Multiple Views",
+            )
+            self.assertEqual(
+                QtCore.QCoreApplication.translate(
+                    "LabelingWidget", "Enable auto focus"
+                ),
+                "Enable auto focus",
             )
         finally:
             self.app.removeTranslator(english_translator)

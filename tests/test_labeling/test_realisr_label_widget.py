@@ -251,6 +251,9 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 set_recoverable_many=Mock(return_value=True)
             ),
             realisr_workspace=workspace,
+            realisr_auto_focus_checkbox=SimpleNamespace(
+                isChecked=Mock(return_value=True)
+            ),
             _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
             _realisr_recoverable=lambda shape: shape.other_data.get(
                 "recoverable"
@@ -278,7 +281,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             ],
         )
 
-    def test_recoverability_does_not_focus_when_advancing_lr_variant(self):
+    def test_completed_lr_advances_regardless_of_auto_focus(self):
         first_shape = SimpleNamespace(
             other_data={"region_id": "region-first", "recoverable": None}
         )
@@ -298,6 +301,9 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 set_recoverable_many=Mock(return_value=True)
             ),
             realisr_workspace=workspace,
+            realisr_auto_focus_checkbox=SimpleNamespace(
+                isChecked=Mock(side_effect=AssertionError)
+            ),
             _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
             _realisr_recoverable=lambda shape: shape.other_data.get(
                 "recoverable"
@@ -345,6 +351,9 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             ),
             realisr_dataset=dataset,
             realisr_workspace=workspace,
+            realisr_auto_focus_checkbox=SimpleNamespace(
+                isChecked=Mock(return_value=True)
+            ),
             _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
             _realisr_recoverable=lambda shape: shape.other_data.get(
                 "recoverable"
@@ -382,6 +391,72 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 call.focus_selected_object(),
             ],
         )
+
+    def test_disabled_auto_focus_preserves_selection_and_view(self):
+        next_shape = SimpleNamespace(
+            other_data={"region_id": "region-next", "recoverable": None}
+        )
+        current_shape = SimpleNamespace(
+            other_data={"region_id": "region-current", "recoverable": None}
+        )
+        selected_shapes = [current_shape]
+        workspace = Mock()
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR4",
+            realisr_sample="sample.png",
+            canvas=SimpleNamespace(
+                shapes=[current_shape, next_shape],
+                selected_shapes=selected_shapes,
+            ),
+            realisr_dataset=SimpleNamespace(
+                set_recoverable_many=Mock(return_value=True)
+            ),
+            realisr_workspace=workspace,
+            realisr_auto_focus_checkbox=SimpleNamespace(
+                isChecked=Mock(return_value=False)
+            ),
+            _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
+            _realisr_recoverable=lambda shape: shape.other_data.get(
+                "recoverable"
+            ),
+            apply_realisr_shape_color=Mock(),
+            dirty=False,
+            _realisr_draft_dirty=False,
+            actions=SimpleNamespace(save=SimpleNamespace(setEnabled=Mock())),
+            realisr_draft_timer=SimpleNamespace(start=Mock()),
+            update_realisr_ui=Mock(),
+            refresh_realisr_file_item=Mock(),
+        )
+
+        with patch.object(QtCore.QTimer, "singleShot") as single_shot:
+            LabelingWidget.set_realisr_recoverable(widget, 0)
+
+        self.assertIs(widget.canvas.selected_shapes, selected_shapes)
+        self.assertEqual(widget.canvas.selected_shapes, [current_shape])
+        workspace.select_region.assert_not_called()
+        workspace.focus_selected_object.assert_not_called()
+        single_shot.assert_not_called()
+
+    def test_auto_focus_setting_is_restored_and_saved(self):
+        settings = SimpleNamespace(
+            value=Mock(return_value=False), setValue=Mock()
+        )
+        checkbox = SimpleNamespace(setChecked=Mock())
+        widget = SimpleNamespace(
+            settings=settings,
+            realisr_auto_focus_checkbox=checkbox,
+        )
+
+        LabelingWidget.restore_realisr_auto_focus_setting(widget)
+
+        settings.value.assert_called_once_with(
+            "realisr/auto_focus", True, type=bool
+        )
+        checkbox.setChecked.assert_called_once_with(False)
+
+        LabelingWidget.save_realisr_auto_focus_setting(widget, True)
+        settings.setValue.assert_called_once_with("realisr/auto_focus", True)
 
     def test_recoverability_buttons_support_uniform_and_mixed_multi_select(
         self,
