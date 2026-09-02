@@ -310,8 +310,8 @@ Review the prompt before generating.</source>
       <translation>HR 已存在标注，已禁用全图推理。</translation>
     </message>
     <message>
-      <source>Select exactly one annotation box for instance inference.</source>
-      <translation>实例推理需要恰好选中一个标注框。</translation>
+      <source>Select at least one annotation box for instance inference.</source>
+      <translation>实例推理需要至少选中一个标注框。</translation>
     </message>
     <message>
       <source>The selected annotation type cannot be recognized.</source>
@@ -338,8 +338,12 @@ Review the prompt before generating.</source>
       <translation>无法保存当前 HR 标注。</translation>
     </message>
     <message>
-      <source>The selected annotation has no region ID.</source>
-      <translation>所选标注缺少区域 ID。</translation>
+      <source>A selected annotation has no region ID.</source>
+      <translation>选中的标注中有标注缺少区域 ID。</translation>
+    </message>
+    <message>
+      <source>The selected annotations do not have unique region IDs.</source>
+      <translation>选中的标注存在重复的区域 ID。</translation>
     </message>
     <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/widgets/auto_labeling/auto_labeling.py" line="244" />

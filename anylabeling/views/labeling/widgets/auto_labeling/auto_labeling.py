@@ -1027,18 +1027,28 @@ class AutoLabelingWidget(QWidget):
                 )
             return True, ""
         selected = list(canvas.selected_shapes)
-        if len(selected) != 1:
+        if not selected:
             return False, self.tr(
-                "Select exactly one annotation box for instance inference."
+                "Select at least one annotation box for instance inference."
             )
-        if selected[0].shape_type not in {
+        supported_shape_types = {
             "rectangle",
             "rotation",
             "polygon",
             "quadrilateral",
-        }:
+        }
+        if any(
+            shape.shape_type not in supported_shape_types for shape in selected
+        ):
             return False, self.tr(
                 "The selected annotation type cannot be recognized."
+            )
+        region_ids = [shape.other_data.get("region_id") for shape in selected]
+        if any(not region_id for region_id in region_ids):
+            return False, self.tr("A selected annotation has no region ID.")
+        if len(set(region_ids)) != len(region_ids):
+            return False, self.tr(
+                "The selected annotations do not have unique region IDs."
             )
         return True, ""
 
@@ -1121,7 +1131,7 @@ class AutoLabelingWidget(QWidget):
                 return
 
         canvas = self._realisr_hr_canvas()
-        target_region_id = None
+        target_region_ids = None
         existing_shapes = None
         if mode == self.REALISR_INSTANCE_MODE:
             if not self.parent.flush_realisr_draft():
@@ -1129,30 +1139,27 @@ class AutoLabelingWidget(QWidget):
                     self.tr("Could not save the current HR annotation.")
                 )
                 return
-            canvas = self._realisr_hr_canvas()
-            if len(canvas.selected_shapes) != 1:
-                self.model_manager.new_model_status.emit(
-                    self.tr(
-                        "Select exactly one annotation box for instance inference."
-                    )
-                )
+            enabled, reason = self._realisr_run_eligibility()
+            if not enabled:
+                self.model_manager.new_model_status.emit(reason)
                 self.refresh_realisr_auto_labeling_state()
                 return
-            target = canvas.selected_shapes[0]
-            target_region_id = target.other_data.get("region_id")
-            if not target_region_id:
-                self.model_manager.new_model_status.emit(
-                    self.tr("The selected annotation has no region ID.")
-                )
-                return
-            existing_shapes = [copy.deepcopy(target)]
-            existing_shapes[0].selected = True
+            canvas = self._realisr_hr_canvas()
+            selected_shapes = list(canvas.selected_shapes)
+            target_region_ids = [
+                shape.other_data["region_id"] for shape in selected_shapes
+            ]
+            existing_shapes = [
+                copy.deepcopy(shape) for shape in selected_shapes
+            ]
+            for shape in existing_shapes:
+                shape.selected = True
         self._pending_realisr_request = {
             "task": self._realisr_task(),
             "sample": self.parent.realisr_sample,
             "image_path": self.parent.filename,
             "mode": mode,
-            "target_region_id": target_region_id,
+            "target_region_ids": target_region_ids,
         }
         kwargs = {"existing_shapes": existing_shapes} if existing_shapes else {}
         self.model_manager.predict_shapes_threading(

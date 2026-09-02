@@ -8318,44 +8318,68 @@ class LabelingWidget(LabelDialog):
             )
             self.label_list.clear()
             self.load_shapes(shapes, replace=True, update_last_label=False)
-            selected_region_id = None
         elif mode == AutoLabelingWidget.REALISR_INSTANCE_MODE:
-            target_region_id = context.get("target_region_id")
-            target = next(
-                (
-                    shape
-                    for shape in hr_canvas.shapes
-                    if self._realisr_region_id(shape) == target_region_id
-                ),
-                None,
-            )
-            recognized = next(iter(result.shapes), None)
-            if target is None or recognized is None:
+            target_region_ids = context.get("target_region_ids") or []
+            if not target_region_ids or len(set(target_region_ids)) != len(
+                target_region_ids
+            ):
                 logger.warning(
-                    "Ignore Real-ISR instance result because its target or recognition is missing"
+                    "Ignore Real-ISR instance result because its target IDs "
+                    "are missing or duplicated"
                 )
                 return
+            current_by_id = {
+                self._realisr_region_id(shape): shape
+                for shape in hr_canvas.shapes
+            }
+            recognized_region_ids = [
+                self._realisr_region_id(shape) for shape in result.shapes
+            ]
+            if (
+                len(current_by_id) != len(hr_canvas.shapes)
+                or any(
+                    region_id not in current_by_id
+                    for region_id in target_region_ids
+                )
+                or len(recognized_region_ids) != len(target_region_ids)
+                or len(set(recognized_region_ids))
+                != len(recognized_region_ids)
+                or set(recognized_region_ids) != set(target_region_ids)
+            ):
+                logger.warning(
+                    "Ignore Real-ISR instance result because its targets "
+                    "and recognitions do not match"
+                )
+                return
+            recognized_by_id = {
+                self._realisr_region_id(shape): shape
+                for shape in result.shapes
+            }
             shapes = [copy.deepcopy(shape) for shape in hr_canvas.shapes]
-            updated = next(
-                shape
-                for shape in shapes
-                if self._realisr_region_id(shape) == target_region_id
-            )
-            updated.description = recognized.description or ""
+            for shape in shapes:
+                region_id = self._realisr_region_id(shape)
+                if region_id in recognized_by_id:
+                    shape.description = (
+                        recognized_by_id[region_id].description or ""
+                    )
             self.label_list.clear()
             self.load_shapes(shapes, replace=True, update_last_label=False)
-            selected_region_id = target_region_id
+            selected_region_ids = target_region_ids
         else:
             return
 
         self.set_dirty()
         if not self.flush_realisr_draft():
             return
-        if selected_region_id is None and hr_canvas.shapes:
-            selected_region_id = self._realisr_region_id(hr_canvas.shapes[0])
-        if selected_region_id is not None:
-            self.realisr_workspace.select_region(
-                selected_region_id, notify=False
+        if mode == AutoLabelingWidget.REALISR_FULL_IMAGE_MODE:
+            selected_region_ids = (
+                [self._realisr_region_id(hr_canvas.shapes[0])]
+                if hr_canvas.shapes
+                else []
+            )
+        if selected_region_ids:
+            self.realisr_workspace.select_regions(
+                selected_region_ids, notify=False
             )
         self.refresh_realisr_active_label_list()
         self.apply_realisr_action_state()

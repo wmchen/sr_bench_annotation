@@ -1,3 +1,4 @@
+import copy
 import os
 from types import SimpleNamespace
 import unittest
@@ -10,6 +11,9 @@ try:
 
     from anylabeling.views.labeling.label_widget import LabelingWidget
     from anylabeling.views.labeling.shape import Shape
+    from anylabeling.views.labeling.widgets.realisr_workspace import (
+        RealISRWorkspace,
+    )
     from anylabeling.services.auto_labeling.types import AutoLabelingResult
 
     PYQT_AVAILABLE = True
@@ -658,7 +662,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         self.assertEqual(shapes[0].description, "")
         self.assertEqual(shapes[0].other_data["recoverable"], 0)
 
-    def test_instance_result_overwrites_only_description(self):
+    def test_instance_result_matches_multiple_descriptions_by_region_id(self):
         target = Shape(
             label="text",
             description="old text",
@@ -682,10 +686,16 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             "region_id": "sample.png#0001",
             "recoverable": 1,
         }
-        canvas = SimpleNamespace(shapes=[target, other])
+        unselected = copy.deepcopy(other)
+        unselected.description = "unselected"
+        unselected.other_data = {
+            "region_id": "sample.png#0002",
+            "recoverable": 0,
+        }
+        canvas = SimpleNamespace(shapes=[target, other, unselected])
         workspace = SimpleNamespace(
             canvases={"HR": canvas},
-            select_region=Mock(),
+            select_regions=Mock(),
         )
         loaded = []
 
@@ -705,23 +715,125 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             apply_realisr_action_state=Mock(),
             update_realisr_ui=Mock(),
         )
-        result = AutoLabelingResult([SimpleNamespace(description="new text")])
+        recognized_target = copy.deepcopy(target)
+        recognized_target.description = "new target text"
+        recognized_other = copy.deepcopy(other)
+        recognized_other.description = "new other text"
+        result = AutoLabelingResult(
+            [recognized_other, recognized_target]
+        )
         context = {
             "mode": "instance",
-            "target_region_id": "sample.png#0000",
+            "target_region_ids": [
+                "sample.png#0000",
+                "sample.png#0001",
+            ],
         }
 
         LabelingWidget._apply_realisr_auto_labeling_result(
             widget, result, context
         )
 
-        self.assertEqual(loaded[0].description, "new text")
+        self.assertEqual(loaded[0].description, "new target text")
         self.assertEqual(loaded[0].points, target.points)
         self.assertEqual(loaded[0].other_data, target.other_data)
-        self.assertEqual(loaded[1].description, "untouched")
-        workspace.select_region.assert_called_once_with(
-            "sample.png#0000", notify=False
+        self.assertEqual(loaded[1].description, "new other text")
+        self.assertEqual(loaded[1].points, other.points)
+        self.assertEqual(loaded[1].other_data, other.other_data)
+        self.assertEqual(loaded[2].description, "unselected")
+        self.assertEqual(loaded[2].other_data, unselected.other_data)
+        workspace.select_regions.assert_called_once_with(
+            ["sample.png#0000", "sample.png#0001"], notify=False
         )
+
+    def test_workspace_select_regions_synchronizes_multiple_views(self):
+        old_hr = SimpleNamespace(selected=True)
+        old_lr = SimpleNamespace(selected=True)
+        hr_first = SimpleNamespace(selected=False)
+        hr_second = SimpleNamespace(selected=False)
+        lr_first = SimpleNamespace(selected=False)
+        lr_second = SimpleNamespace(selected=False)
+        hr_canvas = SimpleNamespace(
+            selected_shapes=[old_hr], update=Mock()
+        )
+        lr_canvas = SimpleNamespace(
+            selected_shapes=[old_lr], update=Mock()
+        )
+        workspace = SimpleNamespace(
+            active_variant="HR",
+            canvases={"HR": hr_canvas, "LR2": lr_canvas},
+            _region_shape_indexes={
+                "HR": {"first": hr_first, "second": hr_second},
+                "LR2": {"first": lr_first, "second": lr_second},
+            },
+            _syncing_selection=False,
+            _displayed_variants=lambda: ("HR", "LR2"),
+        )
+
+        RealISRWorkspace.select_regions(
+            workspace, ["second", "first"], notify=False
+        )
+
+        self.assertEqual(hr_canvas.selected_shapes, [hr_second, hr_first])
+        self.assertEqual(lr_canvas.selected_shapes, [lr_second, lr_first])
+        self.assertFalse(old_hr.selected)
+        self.assertFalse(old_lr.selected)
+        self.assertTrue(hr_first.selected)
+        self.assertTrue(hr_second.selected)
+        self.assertTrue(lr_first.selected)
+        self.assertTrue(lr_second.selected)
+        hr_canvas.update.assert_called_once()
+        lr_canvas.update.assert_called_once()
+
+    def test_instance_result_is_atomic_when_recognition_is_missing(self):
+        first = Shape(
+            label="text", description="first old", shape_type="rectangle"
+        )
+        second = Shape(
+            label="text", description="second old", shape_type="rectangle"
+        )
+        for shape, region_id in (
+            (first, "sample.png#0000"),
+            (second, "sample.png#0001"),
+        ):
+            for x, y in ((1, 2), (9, 2), (9, 8), (1, 8)):
+                shape.add_point(QtCore.QPointF(x, y))
+            shape.other_data = {"region_id": region_id, "recoverable": 1}
+        recognized = copy.deepcopy(first)
+        recognized.description = "new text"
+        canvas = SimpleNamespace(shapes=[first, second])
+        widget = SimpleNamespace(
+            _realisr_result_matches_request=Mock(return_value=True),
+            realisr_workspace=SimpleNamespace(canvases={"HR": canvas}),
+            _realisr_region_id=lambda shape: shape.other_data.get("region_id"),
+            label_list=SimpleNamespace(clear=Mock()),
+            load_shapes=Mock(),
+            set_dirty=Mock(),
+            flush_realisr_draft=Mock(return_value=True),
+            refresh_realisr_active_label_list=Mock(),
+            apply_realisr_action_state=Mock(),
+            update_realisr_ui=Mock(),
+        )
+
+        duplicate = copy.deepcopy(recognized)
+        for invalid_result in (
+            AutoLabelingResult([recognized]),
+            AutoLabelingResult([recognized, duplicate]),
+        ):
+            LabelingWidget._apply_realisr_auto_labeling_result(
+                widget,
+                invalid_result,
+                {
+                    "mode": "instance",
+                    "target_region_ids": [
+                        "sample.png#0000",
+                        "sample.png#0001",
+                    ],
+                },
+            )
+
+        widget.load_shapes.assert_not_called()
+        widget.set_dirty.assert_not_called()
 
     def test_realisr_stale_result_is_rejected_after_sample_change(self):
         widget = SimpleNamespace(

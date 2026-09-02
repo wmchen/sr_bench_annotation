@@ -54,8 +54,8 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
                 "Full-image inference is disabled because HR already has "
                 "annotations."
             ): "HR 已存在标注，已禁用全图推理。",
-            "Select exactly one annotation box for instance inference.": (
-                "实例推理需要恰好选中一个标注框。"
+            "Select at least one annotation box for instance inference.": (
+                "实例推理需要至少选中一个标注框。"
             ),
             "The selected annotation type cannot be recognized.": (
                 "无法识别所选标注的类型。"
@@ -67,8 +67,11 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
             "Could not save the current HR annotation.": (
                 "无法保存当前 HR 标注。"
             ),
-            "The selected annotation has no region ID.": (
-                "所选标注缺少区域 ID。"
+            "A selected annotation has no region ID.": (
+                "选中的标注中有标注缺少区域 ID。"
+            ),
+            "The selected annotations do not have unique region IDs.": (
+                "选中的标注存在重复的区域 ID。"
             ),
         }
         for source, translation in expected.items():

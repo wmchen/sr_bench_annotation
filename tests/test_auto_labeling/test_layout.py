@@ -300,8 +300,15 @@ class TestAutoLabelingLayout(unittest.TestCase):
             )
         )
 
-    def test_realisr_instance_requires_hr_and_exactly_one_shape(self):
-        selected = SimpleNamespace(shape_type="quadrilateral")
+    def test_realisr_instance_requires_hr_and_at_least_one_shape(self):
+        selected = SimpleNamespace(
+            shape_type="quadrilateral",
+            other_data={"region_id": "sample.png#0000"},
+        )
+        second = SimpleNamespace(
+            shape_type="rectangle",
+            other_data={"region_id": "sample.png#0001"},
+        )
         canvas = SimpleNamespace(shapes=[selected], selected_shapes=[])
         widget = SimpleNamespace(
             REALISR_FULL_IMAGE_MODE="full_image",
@@ -329,13 +336,35 @@ class TestAutoLabelingLayout(unittest.TestCase):
         widget.parent.realisr_variant = "HR"
         enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
         self.assertFalse(enabled)
-        self.assertIn("exactly one", reason)
+        self.assertIn("at least one", reason)
 
         canvas.selected_shapes = [selected]
         enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
         self.assertTrue(enabled)
         self.assertEqual(reason, "")
 
+        canvas.selected_shapes = [selected, second]
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertTrue(enabled)
+        self.assertEqual(reason, "")
+
+        second.shape_type = "circle"
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("type cannot be recognized", reason)
+
+        second.shape_type = "rectangle"
+        second.other_data = {}
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("no region ID", reason)
+
+        second.other_data = {"region_id": "sample.png#0000"}
+        enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
+        self.assertFalse(enabled)
+        self.assertIn("unique region IDs", reason)
+
+        canvas.selected_shapes = [selected]
         widget._realisr_mode = lambda: "full_image"
         enabled, reason = AutoLabelingWidget._realisr_run_eligibility(widget)
         self.assertFalse(enabled)
@@ -376,13 +405,20 @@ class TestAutoLabelingLayout(unittest.TestCase):
         )
         manager.predict_shapes_threading.assert_not_called()
 
-    def test_realisr_instance_runs_without_confirmation(self):
-        selected = SimpleNamespace(
+    def test_realisr_instance_runs_multiple_shapes_without_confirmation(self):
+        first = SimpleNamespace(
             shape_type="quadrilateral",
             other_data={"region_id": "sample.png#0000"},
             selected=True,
         )
-        canvas = SimpleNamespace(shapes=[selected], selected_shapes=[selected])
+        second = SimpleNamespace(
+            shape_type="rectangle",
+            other_data={"region_id": "sample.png#0001"},
+            selected=True,
+        )
+        canvas = SimpleNamespace(
+            shapes=[first, second], selected_shapes=[first, second]
+        )
         manager = SimpleNamespace(predict_shapes_threading=Mock())
         widget = SimpleNamespace(
             REALISR_FULL_IMAGE_MODE="full_image",
@@ -408,10 +444,14 @@ class TestAutoLabelingLayout(unittest.TestCase):
         question.assert_not_called()
         call = manager.predict_shapes_threading.call_args
         self.assertEqual(call.args[1], "/data/HR/sample.png")
-        self.assertEqual(len(call.kwargs["existing_shapes"]), 1)
+        self.assertEqual(len(call.kwargs["existing_shapes"]), 2)
+        self.assertTrue(
+            all(shape.selected for shape in call.kwargs["existing_shapes"])
+        )
+        self.assertIsNot(call.kwargs["existing_shapes"][0], first)
         self.assertEqual(
-            widget._pending_realisr_request["target_region_id"],
-            "sample.png#0000",
+            widget._pending_realisr_request["target_region_ids"],
+            ["sample.png#0000", "sample.png#0001"],
         )
 
     def test_realisr_restores_model_remembered_for_task(self):

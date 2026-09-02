@@ -497,8 +497,14 @@ class RealISRWorkspace(QtWidgets.QWidget):
         self.selection_changed.emit(variant, list(shapes))
 
     def select_region(self, region_id, notify=True):
-        shape = self._region_shape_indexes[self.active_variant].get(region_id)
-        shapes = [shape] if shape is not None else []
+        self.select_regions([region_id], notify=notify)
+
+    def select_regions(self, region_ids, notify=True):
+        region_ids = list(region_ids)
+        index = self._region_shape_indexes[self.active_variant]
+        shapes = [
+            index[region_id] for region_id in region_ids if region_id in index
+        ]
         if notify:
             self._selection_request(self.active_variant, shapes)
             return
@@ -507,12 +513,12 @@ class RealISRWorkspace(QtWidgets.QWidget):
             for current_variant, canvas in self.canvases.items():
                 for old_shape in canvas.selected_shapes:
                     old_shape.selected = False
-                selected_shape = self._region_shape_indexes[
-                    current_variant
-                ].get(region_id)
-                selected = (
-                    [selected_shape] if selected_shape is not None else []
-                )
+                index = self._region_shape_indexes[current_variant]
+                selected = [
+                    index[region_id]
+                    for region_id in region_ids
+                    if region_id in index
+                ]
                 for current_shape in selected:
                     current_shape.selected = True
                 canvas.selected_shapes = selected
