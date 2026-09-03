@@ -24,13 +24,13 @@ except Exception:
 class TestSettingsSchema(unittest.TestCase):
 
     def test_field_count(self):
-        self.assertEqual(len(SETTING_FIELDS), 133)
+        self.assertEqual(len(SETTING_FIELDS), 135)
 
     def test_shortcut_and_non_shortcut_count(self):
         shortcut_fields = [
             field for field in SETTING_FIELDS if field.primary == "Shortcuts"
         ]
-        self.assertEqual(len(shortcut_fields), 79)
+        self.assertEqual(len(shortcut_fields), 81)
         self.assertEqual(len(SETTING_FIELDS) - len(shortcut_fields), 54)
 
     def test_defaults_cover_all_keys(self):
@@ -61,6 +61,8 @@ class TestSettingsSchema(unittest.TestCase):
             "shortcuts.open",
             "shortcuts.zoom_in",
             "shortcuts.focus_selected_object",
+            "shortcuts.realisr_convert_to_rectangle",
+            "shortcuts.realisr_convert_to_quadrilateral",
             "shortcuts.add_point_to_edge",
             "shortcuts.create_magic_wand",
             "shortcuts.quit",
@@ -107,7 +109,7 @@ class TestSettingsSchema(unittest.TestCase):
         self.assertIn("shape.line_width", shape_keys)
         self.assertEqual(
             len(shortcut_fields),
-            79,
+            81,
         )
         for key in SETTINGS_SHORTCUT_KEYS_CORE:
             self.assertIn(key, [field.key for field in shortcut_fields])

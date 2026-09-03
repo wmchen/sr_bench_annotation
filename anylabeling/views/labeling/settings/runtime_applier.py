@@ -91,6 +91,12 @@ class SettingsRuntimeApplier:
             "shortcuts.create_cuboid": self._widget.actions.create_cuboid_mode,
             "shortcuts.create_rotation": self._widget.actions.create_rotation_mode,
             "shortcuts.create_quadrilateral": self._widget.actions.create_quadrilateral_mode,
+            "shortcuts.realisr_convert_to_rectangle": (
+                self._widget.actions.realisr_convert_to_rectangle
+            ),
+            "shortcuts.realisr_convert_to_quadrilateral": (
+                self._widget.actions.realisr_convert_to_quadrilateral
+            ),
             "shortcuts.create_circle": self._widget.actions.create_circle_mode,
             "shortcuts.create_line": self._widget.actions.create_line_mode,
             "shortcuts.create_point": self._widget.actions.create_point_mode,

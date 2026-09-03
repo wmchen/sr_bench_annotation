@@ -106,6 +106,9 @@ from .widgets import (
     NavigatorDialog,
 )
 from .widgets.realisr_workspace import RealISRWorkspace
+from .widgets.quadrilateral_conversion_dialog import (
+    QuadrilateralConversionDialog,
+)
 
 LABEL_COLORMAP = utils.label_colormap()
 LABEL_OPACITY = 128
@@ -1183,6 +1186,11 @@ class LabelingWidget(LabelDialog):
             checkable=True,
             enabled=False,
         )
+        (
+            realisr_convert_to_rectangle,
+            realisr_convert_to_quadrilateral,
+        ) = self._create_realisr_conversion_actions(shortcuts)
+
         shape_converter = action(
             self.tr("Shape Converter"),
             lambda: utils.open_shape_converter(self),
@@ -1925,6 +1933,8 @@ class LabelingWidget(LabelDialog):
             create_cuboid_mode=create_cuboid_mode,
             create_rotation_mode=create_rotation_mode,
             create_quadrilateral_mode=create_quadrilateral_mode,
+            realisr_convert_to_rectangle=realisr_convert_to_rectangle,
+            realisr_convert_to_quadrilateral=realisr_convert_to_quadrilateral,
             create_circle_mode=create_circle_mode,
             create_line_mode=create_line_mode,
             create_point_mode=create_point_mode,
@@ -2030,6 +2040,8 @@ class LabelingWidget(LabelDialog):
             # XXX: need to add some actions here to activate the shortcut
             editMenu=(
                 edit,
+                realisr_convert_to_rectangle,
+                realisr_convert_to_quadrilateral,
                 duplicate,
                 delete,
                 copy,
@@ -3846,6 +3858,8 @@ class LabelingWidget(LabelDialog):
         self.actions.undo.setEnabled(not drawing)
         self.actions.delete.setEnabled(not drawing)
         self.actions.union_selection.setEnabled(not drawing)
+        if self.realisr_mode:
+            self.update_realisr_conversion_action_state()
         self.update_labeling_instruction()
 
     def create_digit_mode(self, digit_num):
@@ -7256,6 +7270,7 @@ class LabelingWidget(LabelDialog):
             }
             self.realisr_mode = False
             self.realisr_dataset = None
+            self.update_realisr_conversion_action_state()
             self.auto_labeling_widget.leave_realisr_context()
             self.realisr_sample = None
             self.realisr_variant = "HR"
@@ -7793,9 +7808,128 @@ class LabelingWidget(LabelDialog):
         self._update_realisr_file_item(item, sample)
         del blocker
 
+    def _create_realisr_conversion_actions(self, shortcuts):
+        rectangle = utils.new_action(
+            self,
+            self.tr("Convert to Rectangle (Real-ISR)"),
+            functools.partial(self.convert_realisr_shape, "rectangle"),
+            shortcuts["realisr_convert_to_rectangle"],
+            tip=self.tr(
+                "Convert one selected HR text quadrilateral to its "
+                "axis-aligned bounding rectangle"
+            ),
+            enabled=False,
+        )
+        quadrilateral = utils.new_action(
+            self,
+            self.tr("Convert to Quadrilateral (Real-ISR)"),
+            functools.partial(self.convert_realisr_shape, "quadrilateral"),
+            shortcuts["realisr_convert_to_quadrilateral"],
+            tip=self.tr(
+                "Convert one selected HR text rectangle to a quadrilateral; "
+                "choose the start vertex and direction in a diagram"
+            ),
+            enabled=False,
+        )
+        for action in (rectangle, quadrilateral):
+            action.setAutoRepeat(False)
+            self.addAction(action)
+        return rectangle, quadrilateral
+
+    def _realisr_shape_conversion(self, target_type):
+        """Validate an interactive conversion and prepare its four corners."""
+        if (
+            not self.realisr_mode
+            or self.realisr_dataset is None
+            or self.realisr_dataset.attribute != "text"
+            or self.realisr_variant != "HR"
+            or self.realisr_workspace.active_variant != "HR"
+            or not self.realisr_sample
+            or self._realisr_loading
+        ):
+            return None
+        canvas = self.realisr_workspace.canvases["HR"]
+        if (
+            self.canvas is not canvas
+            or not canvas.editing()
+            or canvas.current is not None
+            or len(canvas.selected_shapes) != 1
+        ):
+            return None
+        shape = canvas.selected_shapes[0]
+        source_type = {
+            "rectangle": "quadrilateral",
+            "quadrilateral": "rectangle",
+        }.get(target_type)
+        if (
+            shape.locked
+            or shape not in canvas.shapes
+            or source_type is None
+            or shape.shape_type != source_type
+            or len(shape.points)
+            not in ((2, 4) if source_type == "rectangle" else (4,))
+        ):
+            return None
+        xs = [point.x() for point in shape.points]
+        ys = [point.y() for point in shape.points]
+        if not all(math.isfinite(value) for value in xs + ys):
+            return None
+        xmin, xmax = min(xs), max(xs)
+        ymin, ymax = min(ys), max(ys)
+        if xmin >= xmax or ymin >= ymax:
+            return None
+        return shape, [
+            QtCore.QPointF(xmin, ymin),
+            QtCore.QPointF(xmax, ymin),
+            QtCore.QPointF(xmax, ymax),
+            QtCore.QPointF(xmin, ymax),
+        ]
+
+    def update_realisr_conversion_action_state(self):
+        for target in ("rectangle", "quadrilateral"):
+            action = getattr(self.actions, f"realisr_convert_to_{target}")
+            action.setEnabled(
+                self._realisr_shape_conversion(target) is not None
+            )
+
+    def convert_realisr_shape(self, target_type, _checked=False):
+        conversion = self._realisr_shape_conversion(target_type)
+        if conversion is None:
+            return False
+        shape, points = conversion
+        if target_type == "quadrilateral":
+            dialog = QuadrilateralConversionDialog(self)
+            try:
+                if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                    return False
+                order = dialog.vertex_order()
+            finally:
+                dialog.deleteLater()
+            # A modal dialog still processes timers and inference results.
+            # Apply only if the same HR rectangle remains selected and intact.
+            current = self._realisr_shape_conversion(target_type)
+            if (
+                current is None
+                or current[0] is not shape
+                or current[1] != points
+            ):
+                return False
+            points = [points[index] for index in order]
+        # Checkpoint pending edits before adding this one undoable operation.
+        self.canvas.store_shapes()
+        self.canvas.un_highlight()
+        shape.shape_type = target_type
+        shape.points = points
+        shape.close()
+        self.canvas.store_shapes()
+        self.canvas.update()
+        self.set_dirty()
+        return True
+
     def apply_realisr_action_state(self):
         if not self.realisr_mode:
             return
+        self.update_realisr_conversion_action_state()
         editable = self.realisr_variant == "HR"
         is_face = self.realisr_dataset.attribute == "face"
         selected = len(self.canvas.selected_shapes) > 0

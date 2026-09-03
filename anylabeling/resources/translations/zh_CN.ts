@@ -2699,6 +2699,22 @@ Continue?</source>
   <context>
     <name>LabelingWidget</name>
     <message>
+        <source>Convert to Rectangle (Real-ISR)</source>
+        <translation>转为矩形（Real-ISR）</translation>
+    </message>
+    <message>
+        <source>Convert to Quadrilateral (Real-ISR)</source>
+        <translation>转为四边形（Real-ISR）</translation>
+    </message>
+    <message>
+        <source>Convert one selected HR text quadrilateral to its axis-aligned bounding rectangle</source>
+        <translation>将 HR 中单选的文本四边形转换为轴对齐的外接矩形</translation>
+    </message>
+    <message>
+        <source>Convert one selected HR text rectangle to a quadrilateral; choose the start vertex and direction in a diagram</source>
+        <translation>将 HR 中单选的文本矩形转换为四边形，在示意图中选择起点和方向</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="258" />
       <location filename="../../views/labeling/label_widget.py" line="258" />
       <source>Flags</source>
@@ -7029,6 +7045,14 @@ Results have been saved to:
   <context>
     <name>SettingsDialog</name>
     <message>
+        <source>Convert to Rectangle (Real-ISR)</source>
+        <translation>转为矩形（Real-ISR）</translation>
+    </message>
+    <message>
+        <source>Convert to Quadrilateral (Real-ISR)</source>
+        <translation>转为四边形（Real-ISR）</translation>
+    </message>
+    <message>
       <location filename="../../views/labeling/settings/schema.py" line="429" />
       <source>Focus Selected Object</source>
       <translation>聚焦选中对象</translation>
@@ -9612,4 +9636,50 @@ Response preview:
       <translation>缩放级别</translation>
     </message>
   </context>
+<context>
+    <name>QuadrilateralConversionDialog</name>
+    <message>
+        <source>Rectangle to Quadrilateral</source>
+        <translation>矩形转四边形</translation>
+    </message>
+    <message>
+        <source>Click a corner in the diagram to choose the start vertex.</source>
+        <translation>点击示意图上的角点，选择起点。</translation>
+    </message>
+    <message>
+        <source>Vertex order:</source>
+        <translation>顶点顺序：</translation>
+    </message>
+    <message>
+        <source>Clockwise</source>
+        <translation>顺时针</translation>
+    </message>
+    <message>
+        <source>Counterclockwise</source>
+        <translation>逆时针</translation>
+    </message>
+    <message>
+        <source>The filled point is the start. Follow the arrows from 1 to 4.</source>
+        <translation>实心点为起点，沿箭头依次经过 1–4 号点。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Convert</source>
+        <translation>转换</translation>
+    </message>
+</context>
+<context>
+    <name>QuadrilateralOrderPreview</name>
+    <message>
+        <source>Corner %d</source>
+        <translation>角点 %d</translation>
+    </message>
+    <message>
+        <source>Click to choose the start vertex</source>
+        <translation>点击选择起点</translation>
+    </message>
+</context>
 </TS>

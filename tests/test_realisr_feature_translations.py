@@ -113,9 +113,7 @@ class RealISRFeatureTranslationsTest(unittest.TestCase):
         self.assertEqual(
             english.get("Tile Multiple Views"), "Tile Multiple Views"
         )
-        self.assertEqual(
-            english.get("Enable auto focus"), "Enable auto focus"
-        )
+        self.assertEqual(english.get("Enable auto focus"), "Enable auto focus")
 
     def test_redundant_draft_warning_is_localized(self):
         translations = self.translations_for("LabelingWidget")
@@ -308,6 +306,42 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
             ): "以下草稿与正式标注完全相同：\n%s\n\n"
             "请打开对应图像并重新保存，以清除冗余草稿。",
             ("SettingsDialog", "Focus Selected Object"): "聚焦选中对象",
+            (
+                "LabelingWidget",
+                "Convert to Rectangle (Real-ISR)",
+            ): "转为矩形（Real-ISR）",
+            (
+                "LabelingWidget",
+                "Convert to Quadrilateral (Real-ISR)",
+            ): "转为四边形（Real-ISR）",
+            (
+                "SettingsDialog",
+                "Convert to Rectangle (Real-ISR)",
+            ): "转为矩形（Real-ISR）",
+            (
+                "SettingsDialog",
+                "Convert to Quadrilateral (Real-ISR)",
+            ): "转为四边形（Real-ISR）",
+            (
+                "LabelingWidget",
+                "Convert one selected HR text quadrilateral to its "
+                "axis-aligned bounding rectangle",
+            ): "将 HR 中单选的文本四边形转换为轴对齐的外接矩形",
+            (
+                "LabelingWidget",
+                "Convert one selected HR text rectangle to a quadrilateral; "
+                "choose the start vertex and direction in a diagram",
+            ): "将 HR 中单选的文本矩形转换为四边形，在示意图中选择起点和方向",
+            (
+                "QuadrilateralConversionDialog",
+                "Rectangle to Quadrilateral",
+            ): "矩形转四边形",
+            ("QuadrilateralConversionDialog", "Clockwise"): "顺时针",
+            ("QuadrilateralConversionDialog", "Counterclockwise"): "逆时针",
+            (
+                "QuadrilateralConversionDialog",
+                "Click a corner in the diagram to choose the start vertex.",
+            ): "点击示意图上的角点，选择起点。",
         }
         for (context, source), expected in checks.items():
             self.assertEqual(
@@ -321,6 +355,15 @@ class RealISRCompiledTranslationTest(unittest.TestCase):
         )
         self.app.installTranslator(english_translator)
         try:
+            for context in ("LabelingWidget", "SettingsDialog"):
+                for source in (
+                    "Convert to Rectangle (Real-ISR)",
+                    "Convert to Quadrilateral (Real-ISR)",
+                ):
+                    self.assertEqual(
+                        QtCore.QCoreApplication.translate(context, source),
+                        source,
+                    )
             self.assertEqual(
                 QtCore.QCoreApplication.translate(
                     "LabelingWidget", "Tile Multiple Views"

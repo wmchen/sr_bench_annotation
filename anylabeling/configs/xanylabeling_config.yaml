@@ -175,6 +175,8 @@ shortcuts:
   create_cuboid: Ctrl+R
   create_rotation: O
   create_quadrilateral: T
+  realisr_convert_to_rectangle: Alt+R
+  realisr_convert_to_quadrilateral: Alt+T
   create_circle: Shift+C
   create_line: Shift+L
   create_point: Shift+P

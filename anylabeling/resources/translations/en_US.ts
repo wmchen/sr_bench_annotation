@@ -2611,6 +2611,22 @@ Continue?</translation>
   <context>
     <name>LabelingWidget</name>
     <message>
+        <source>Convert to Rectangle (Real-ISR)</source>
+        <translation>Convert to Rectangle (Real-ISR)</translation>
+    </message>
+    <message>
+        <source>Convert to Quadrilateral (Real-ISR)</source>
+        <translation>Convert to Quadrilateral (Real-ISR)</translation>
+    </message>
+    <message>
+        <source>Convert one selected HR text quadrilateral to its axis-aligned bounding rectangle</source>
+        <translation>Convert one selected HR text quadrilateral to its axis-aligned bounding rectangle</translation>
+    </message>
+    <message>
+        <source>Convert one selected HR text rectangle to a quadrilateral; choose the start vertex and direction in a diagram</source>
+        <translation>Convert one selected HR text rectangle to a quadrilateral; choose the start vertex and direction in a diagram</translation>
+    </message>
+    <message>
       <location filename="../../../build/lib/anylabeling/views/labeling/label_widget.py" line="258" />
       <location filename="../../views/labeling/label_widget.py" line="258" />
       <source>Flags</source>
@@ -6738,6 +6754,14 @@ Results have been saved to:
   <context>
     <name>SettingsDialog</name>
     <message>
+        <source>Convert to Rectangle (Real-ISR)</source>
+        <translation>Convert to Rectangle (Real-ISR)</translation>
+    </message>
+    <message>
+        <source>Convert to Quadrilateral (Real-ISR)</source>
+        <translation>Convert to Quadrilateral (Real-ISR)</translation>
+    </message>
+    <message>
       <location filename="../../views/labeling/settings/schema.py" line="429" />
       <source>Focus Selected Object</source>
       <translation>Focus Selected Object</translation>
@@ -9308,4 +9332,50 @@ Response preview:
       <translation type="unfinished" />
     </message>
   </context>
+<context>
+    <name>QuadrilateralConversionDialog</name>
+    <message>
+        <source>Rectangle to Quadrilateral</source>
+        <translation>Rectangle to Quadrilateral</translation>
+    </message>
+    <message>
+        <source>Click a corner in the diagram to choose the start vertex.</source>
+        <translation>Click a corner in the diagram to choose the start vertex.</translation>
+    </message>
+    <message>
+        <source>Vertex order:</source>
+        <translation>Vertex order:</translation>
+    </message>
+    <message>
+        <source>Clockwise</source>
+        <translation>Clockwise</translation>
+    </message>
+    <message>
+        <source>Counterclockwise</source>
+        <translation>Counterclockwise</translation>
+    </message>
+    <message>
+        <source>The filled point is the start. Follow the arrows from 1 to 4.</source>
+        <translation>The filled point is the start. Follow the arrows from 1 to 4.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Convert</source>
+        <translation>Convert</translation>
+    </message>
+</context>
+<context>
+    <name>QuadrilateralOrderPreview</name>
+    <message>
+        <source>Corner %d</source>
+        <translation>Corner %d</translation>
+    </message>
+    <message>
+        <source>Click to choose the start vertex</source>
+        <translation>Click to choose the start vertex</translation>
+    </message>
+</context>
 </TS>

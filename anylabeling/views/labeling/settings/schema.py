@@ -428,6 +428,12 @@ def _shortcut_label(short_key: str) -> str:
         "focus_selected_object": QT_TRANSLATE_NOOP(
             SETTINGS_TRANSLATION_CONTEXT, "Focus Selected Object"
         ),
+        "realisr_convert_to_rectangle": QT_TRANSLATE_NOOP(
+            SETTINGS_TRANSLATION_CONTEXT, "Convert to Rectangle (Real-ISR)"
+        ),
+        "realisr_convert_to_quadrilateral": QT_TRANSLATE_NOOP(
+            SETTINGS_TRANSLATION_CONTEXT, "Convert to Quadrilateral (Real-ISR)"
+        ),
         "edit_shapes": QT_TRANSLATE_NOOP(
             SETTINGS_TRANSLATION_CONTEXT, "Open Shape Manager Dialog"
         ),
@@ -1297,6 +1303,8 @@ def _shortcut_category_map() -> dict[str, tuple[str, ...]]:
             "create_quadrilateral",
             "create_rectangle",
             "create_rotation",
+            "realisr_convert_to_rectangle",
+            "realisr_convert_to_quadrilateral",
             "delete_polygon",
             "duplicate_polygon",
             "edit_brush_mode",
