@@ -72,6 +72,24 @@ class RealISRCanvas(Canvas):
             )
             event.accept()
             return
+        if (
+            self.editing()
+            and not self.realisr_read_only
+            and len(self.selected_shapes) > 1
+        ):
+            # Multi-selection is for batch annotation, not geometry editing.
+            self.is_move_editing = False
+            if event.buttons() & (
+                Qt.MouseButton.LeftButton | Qt.MouseButton.RightButton
+            ) and not (
+                self._space_pressed
+                or self._space_panning
+                or self._space_pan_suppress_until_release
+            ):
+                # Keep the selection when a blocked drag ends.
+                self.h_shape_is_selected = False
+                event.accept()
+                return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
