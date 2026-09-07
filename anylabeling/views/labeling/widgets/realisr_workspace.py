@@ -161,6 +161,10 @@ class RealISRWorkspace(QtWidgets.QWidget):
             self._layout.setColumnStretch(index, 1)
         for index, variant in enumerate(VARIANTS):
             canvas = RealISRCanvas(parent=parent, **canvas_options)
+            if variant == "HR":
+                # HR owns the editable master geometry. Keep every text
+                # quadrilateral vertex within the source image.
+                canvas.boundary_restricted_shape_types.add("quadrilateral")
             # Real-ISR canvases show only annotation geometry. Keep label and
             # description data intact, but reserve text display for the label
             # list (region IDs) and the read-only LR description panel.

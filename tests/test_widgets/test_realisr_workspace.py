@@ -415,6 +415,72 @@ class RealISRWorkspaceTest(unittest.TestCase):
             self.assertFalse(canvas.show_labels)
             self.assertFalse(canvas.show_texts)
 
+    def test_hr_quadrilateral_drawing_is_clamped_to_image_boundary(self):
+        canvas = self.workspace.canvases["HR"]
+        canvas.create_mode = "quadrilateral"
+        canvas.set_editing(False)
+        canvas.current = Shape(shape_type="quadrilateral")
+        canvas.current.points = [QtCore.QPointF(20, 20)]
+        canvas.line.points = [
+            QtCore.QPointF(20, 20),
+            QtCore.QPointF(20, 20),
+        ]
+
+        canvas._sync_drawing_line(
+            QtCore.QPointF(-20, 40),
+            QtCore.Qt.KeyboardModifier.NoModifier,
+        )
+
+        self.assertEqual(canvas.line[1].x(), 0)
+        self.assertGreaterEqual(canvas.line[1].y(), 0)
+        self.assertLess(canvas.line[1].y(), canvas.pixmap.height())
+
+    def test_hr_quadrilateral_vertex_edit_is_clamped_to_image_boundary(self):
+        canvas = self.workspace.canvases["HR"]
+        shape = canvas.shapes[0]
+        shape.points = [
+            QtCore.QPointF(20, 20),
+            QtCore.QPointF(80, 20),
+            QtCore.QPointF(80, 60),
+            QtCore.QPointF(20, 60),
+        ]
+        canvas.h_shape = shape
+        canvas.h_vertex = 0
+
+        canvas.bounded_move_vertex(QtCore.QPointF(-20, -20))
+
+        self.assertGreaterEqual(shape.points[0].x(), 0)
+        self.assertGreaterEqual(shape.points[0].y(), 0)
+        self.assertTrue(
+            all(not canvas.out_off_pixmap(p) for p in shape.points)
+        )
+
+    def test_hr_quadrilateral_move_is_kept_inside_image_boundary(self):
+        canvas = self.workspace.canvases["HR"]
+        shape = canvas.shapes[0]
+        shape.points = [
+            QtCore.QPointF(20, 20),
+            QtCore.QPointF(80, 20),
+            QtCore.QPointF(80, 60),
+            QtCore.QPointF(20, 60),
+        ]
+        canvas.selected_shapes = [shape]
+        canvas.prev_point = QtCore.QPointF(50, 40)
+        canvas.calculate_offsets(canvas.prev_point)
+
+        self.assertTrue(
+            canvas.bounded_move_shapes([shape], QtCore.QPointF(-50, -50))
+        )
+        self.assertTrue(
+            all(not canvas.out_off_pixmap(p) for p in shape.points)
+        )
+
+    def test_non_hr_quadrilateral_boundary_policy_is_unchanged(self):
+        canvas = self.workspace.canvases["LR2"]
+
+        self.assertTrue(canvas.shape_can_leave_pixmap("quadrilateral"))
+        self.assertTrue(canvas.drawing_shape_can_leave_pixmap("quadrilateral"))
+
     def test_crosshair_is_visible_only_while_drawing(self):
         for canvas in self.workspace.canvases.values():
             self.assertTrue(canvas.editing())

@@ -183,6 +183,13 @@ class Canvas(
         self._selected_group_id = None
         self._hovered_group_id = None
         self.allowed_oop_shape_types = ["rotation", "quadrilateral", "cuboid"]
+        self.allowed_oop_drawing_shape_types = [
+            "rectangle",
+            "rotation",
+            "quadrilateral",
+            "cuboid",
+        ]
+        self.boundary_restricted_shape_types = set()
         default_cuboid_depth_vector = self.cuboid_config.get(
             "default_depth_vector", [24.0, -24.0]
         )
@@ -1971,12 +1978,10 @@ class Canvas(
     def _sync_drawing_line(self, pos, modifiers):
         if not self.drawing() or not self.current:
             return
-        if self.out_off_pixmap(pos) and self.create_mode not in [
-            "rectangle",
-            "rotation",
-            "quadrilateral",
-            "cuboid",
-        ]:
+        if (
+            self.out_off_pixmap(pos)
+            and not self.drawing_shape_can_leave_pixmap(self.create_mode)
+        ):
             pos = self.intersection_point(self.current[-1], pos)
         elif (
             self.snapping
@@ -2135,12 +2140,10 @@ class Canvas(
                 self.show_shape.emit(shape_height, shape_width, pos)
 
             color = QtGui.QColor(0, 0, 255)
-            if self.out_off_pixmap(pos) and self.create_mode not in [
-                "rectangle",
-                "rotation",
-                "quadrilateral",
-                "cuboid",
-            ]:
+            if (
+                self.out_off_pixmap(pos)
+                and not self.drawing_shape_can_leave_pixmap(self.create_mode)
+            ):
                 pos = self.intersection_point(self.current[-1], pos)
             elif (
                 self.snapping
@@ -2811,10 +2814,16 @@ class Canvas(
                         self.set_hiding()
                         self.drawing_polygon.emit(True)
                         self.update()
-                elif self.out_off_pixmap(pos) and self.create_mode in [
-                    "polygon",
-                    "linestrip",
-                ]:
+                elif self.out_off_pixmap(pos) and (
+                    self.create_mode in ["polygon", "linestrip"]
+                    or (
+                        self.create_mode
+                        in self.allowed_oop_drawing_shape_types
+                        and not self.drawing_shape_can_leave_pixmap(
+                            self.create_mode
+                        )
+                    )
+                ):
                     w = self.pixmap.width()
                     h = self.pixmap.height()
                     if w > 0 and h > 0:
@@ -2828,12 +2837,10 @@ class Canvas(
                         self.set_hiding()
                         self.drawing_polygon.emit(True)
                         self.update()
-                elif self.out_off_pixmap(pos) and self.create_mode in [
-                    "rectangle",
-                    "rotation",
-                    "quadrilateral",
-                    "cuboid",
-                ]:
+                elif (
+                    self.out_off_pixmap(pos)
+                    and self.drawing_shape_can_leave_pixmap(self.create_mode)
+                ):
                     # Create new shape.
                     self.current = Shape(shape_type=self.create_mode)
                     self.current.add_point(pos)
@@ -3743,9 +3750,8 @@ class Canvas(
             self.move_cuboid_control(shape, index, pos)
             return
         point = shape[index]
-        if (
-            self.out_off_pixmap(pos)
-            and shape.shape_type not in self.allowed_oop_shape_types
+        if self.out_off_pixmap(pos) and not self.shape_can_leave_pixmap(
+            shape.shape_type
         ):
             pos = self.intersection_point(point, pos)
 
@@ -3794,7 +3800,7 @@ class Canvas(
             return False
         shape_types = []
         for shape in shapes:
-            if shape.shape_type in self.allowed_oop_shape_types:
+            if self.shape_can_leave_pixmap(shape.shape_type):
                 shape_types.append(shape.shape_type)
 
         if self.out_off_pixmap(pos) and len(shape_types) == 0:
@@ -4901,6 +4907,20 @@ class Canvas(
             return True
         w, h = self.pixmap.width(), self.pixmap.height()
         return not (0 <= p.x() <= w - 1 and 0 <= p.y() <= h - 1)
+
+    def shape_can_leave_pixmap(self, shape_type):
+        """Return whether an edited shape may extend beyond the image."""
+        return (
+            shape_type in self.allowed_oop_shape_types
+            and shape_type not in self.boundary_restricted_shape_types
+        )
+
+    def drawing_shape_can_leave_pixmap(self, shape_type):
+        """Return whether a shape being drawn may extend beyond the image."""
+        return (
+            shape_type in self.allowed_oop_drawing_shape_types
+            and shape_type not in self.boundary_restricted_shape_types
+        )
 
     def finalise(self):
         """Finish drawing for a shape"""
