@@ -495,6 +495,82 @@ class TestAutoLabelingLayout(unittest.TestCase):
             "Text OCR"
         )
 
+    def test_realisr_face_run_enabled_after_model_loading_thread_exits(self):
+        from anylabeling.services.auto_labeling.model_manager import ModelManager
+
+        config.current_config_file = (
+            "anylabeling/configs/xanylabeling_config.yaml"
+        )
+        canvas = SimpleNamespace(shapes=[], selected_shapes=[])
+        parent = SimpleNamespace(
+            _config=get_config(),
+            realisr_mode=True,
+            realisr_dataset=SimpleNamespace(attribute="face"),
+            realisr_variant="HR",
+            realisr_sample="sample.png",
+            filename="/data/HR/sample.png",
+            image=object(),
+            realisr_workspace=SimpleNamespace(canvases={"HR": canvas}),
+            settings=SimpleNamespace(
+                value=Mock(return_value=""), remove=Mock(), setValue=Mock()
+            ),
+            new_shapes_from_auto_labeling=Mock(),
+        )
+        with patch.object(ModelManager, "load_model_configs"):
+            widget = AutoLabelingWidget(parent)
+        self._widgets.append(widget)
+        widget.configure_realisr_context()
+        manager = widget.model_manager
+        model = Mock()
+        model.get_required_widgets.return_value = ["button_run"]
+        model.Meta.output_modes = {"rectangle": "Rectangle"}
+        model.Meta.default_output_mode = "rectangle"
+        model_config = {
+            "config_file": "face.yaml",
+            "type": "yolov6_face",
+            "display_name": "Face",
+            "model": model,
+        }
+        manager.model_configs = [model_config]
+
+        def load_model(_model_id):
+            manager.loaded_model_config = model_config
+
+        observed_loading = []
+        manager.model_loaded.connect(
+            lambda _: observed_loading.append(manager.is_model_download_running())
+        )
+        loop = QtCore.QEventLoop()
+        timeout = QtCore.QTimer()
+        timeout.setSingleShot(True)
+        timeout.timeout.connect(loop.quit)
+        with patch.object(manager, "_load_model", side_effect=load_model):
+            manager.load_model("face.yaml")
+            thread = manager.model_download_thread
+            thread.finished.connect(loop.quit)
+            timeout.start(5000)
+            loop.exec()
+            timeout.stop()
+            if manager.is_model_download_running():
+                thread.quit()
+                thread.wait()
+                self.fail("Model loading thread did not finish")
+        self.app.processEvents()
+
+        self.assertEqual(observed_loading, [False])
+        self.assertTrue(widget.button_run.isEnabled())
+        self.assertEqual(widget.button_run.toolTip(), "")
+        with (
+            patch.object(
+                QtWidgets.QMessageBox,
+                "question",
+                return_value=QtWidgets.QMessageBox.StandardButton.Yes,
+            ),
+            patch.object(manager, "predict_shapes_threading") as predict,
+        ):
+            widget.button_run.click()
+        predict.assert_called_once_with(parent.image, parent.filename)
+
     def test_realisr_text_mode_defaults_from_annotation_state(self):
         config.current_config_file = (
             "anylabeling/configs/xanylabeling_config.yaml"

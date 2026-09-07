@@ -329,13 +329,6 @@ class ModelManager(QObject):
             )
             return
         if not config_file:
-            if self.model_download_worker is not None:
-                try:
-                    self.model_download_worker.finished.disconnect(
-                        self.on_model_download_finished
-                    )
-                except TypeError:
-                    pass
             self.unload_model()
             self.new_model_status.emit(self.tr("No model selected."))
             return
@@ -366,9 +359,6 @@ class ModelManager(QObject):
         self.new_model_status.emit(message)
 
         self.model_download_worker = GenericWorker(self._load_model, model_id)
-        self.model_download_worker.finished.connect(
-            self.on_model_download_finished
-        )
         self.model_download_worker.finished.connect(
             self.model_download_thread.quit
         )
@@ -401,6 +391,9 @@ class ModelManager(QObject):
         """Clear finished model download thread references."""
         self.model_download_thread = None
         self.model_download_worker = None
+        # Notify the UI only after loading is no longer considered running.
+        # Real-ISR checks this state when enabling its inference controls.
+        self.on_model_download_finished()
 
     def _load_model(self, model_id):  # noqa: C901
         """Load and return model info"""
