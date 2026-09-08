@@ -176,6 +176,55 @@ class RealISRDatasetTest(unittest.TestCase):
         ):
             self.add_record(dataset, record)
 
+    def test_face_hr_unset_survives_draft_and_blocks_commit(self):
+        sample = "000001.png"
+        dataset = RealISRDataset(self.root, "face")
+        region_id = self.add_record(dataset, self.face_record())
+        for variant in VARIANTS[1:]:
+            dataset.set_recoverable(sample, variant, region_id, 2)
+        dataset.save_draft()
+        dataset = RealISRDataset(self.root, "face")
+        self.assertIsNone(dataset.records_for(sample, "HR")[0]["recoverable"])
+        self.assertEqual(dataset.missing_counts(sample)["HR"], 1)
+        self.assertEqual(dataset.dashboard_stats()["completed_instances"], 0)
+        self.assertEqual(
+            dataset.dashboard_stats()["recoverability_assigned"], 3
+        )
+        with self.assertRaisesRegex(
+            RealISRDatasetError, "unset recoverability"
+        ):
+            dataset.commit_sample(sample)
+        dataset.set_recoverable(sample, "HR", region_id, 1)
+        self.assertEqual(dataset.dashboard_stats()["completed_instances"], 1)
+        self.assertEqual(
+            dataset.dashboard_stats(), dataset._dashboard_stats_uncached()
+        )
+        dataset.commit_sample(sample)
+        restored = RealISRDataset(self.root, "face")
+        self.assertEqual(
+            restored.records_for(sample, "HR")[0]["recoverable"], 1
+        )
+        self.assertTrue(restored.is_complete(sample, formal=True))
+
+    def test_face_hr_preserves_explicit_values_and_does_not_fill_missing(self):
+        dataset = RealISRDataset(self.root, "face")
+        for value in (None, 0, 1, 2, 9):
+            with self.subTest(value=value):
+                source = self.face_record()
+                source["recoverable"] = value
+                normalized = dataset._normalize_hr("000001.png", [source])[0]
+                expected = value if value in (0, 1, 2) else None
+                self.assertEqual(normalized["recoverable"], expected)
+        region_id = self.add_record(dataset, self.face_record())
+        dataset.set_recoverable("000001.png", "HR", region_id, 2)
+        edited = dataset.records_for("000001.png", "HR")[0]
+        edited.pop("recoverable")
+        edited["points"] = [[2, 2], [10, 10]]
+        dataset.set_hr_records("000001.png", [edited])
+        self.assertEqual(
+            dataset.records_for("000001.png", "HR")[0]["recoverable"], 2
+        )
+
     def test_stable_ids_survive_reordering(self):
         dataset = RealISRDataset(self.root, "text")
         first = self.text_record()
@@ -321,7 +370,7 @@ class RealISRDatasetTest(unittest.TestCase):
                 "instances": 1,
                 "completed_instances": 0,
                 "recoverability_assigned": 0,
-                "recoverability_total": 3,
+                "recoverability_total": 4,
                 "committed_samples": 0,
             },
         )
@@ -329,8 +378,13 @@ class RealISRDatasetTest(unittest.TestCase):
             dataset.set_recoverable("000001.png", variant, region_id, value)
         stats = dataset.dashboard_stats()
         self.assertEqual(stats["instances"], 1)
-        self.assertEqual(stats["completed_instances"], 1)
+        self.assertEqual(stats["completed_instances"], 0)
         self.assertEqual(stats["recoverability_assigned"], 3)
+        dataset.set_recoverable("000001.png", "HR", region_id, 0)
+        self.assertEqual(dataset.dashboard_stats()["completed_instances"], 1)
+        self.assertEqual(
+            dataset.dashboard_stats()["recoverability_assigned"], 4
+        )
 
     def test_change_results_and_dashboard_cache_track_real_mutations(self):
         dataset = RealISRDataset(self.root, "text")

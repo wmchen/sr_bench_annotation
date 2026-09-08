@@ -408,6 +408,8 @@ Choose `File` > `Open Real-ISR Dataset`, select the `Text` or `Face` attribute, 
 - The selected attribute is bound in `annotations/RealISRMeta.json`, the draft, and every formal JSON. Opening the same root with another attribute is rejected. Older Real-ISR X-AnyLabeling JSON without an attribute is treated as `Text`.
 - Real-ISR reads only X-AnyLabeling JSON. `Label.txt` files are ignored.
 
+- Face recoverability must be assigned manually in HR as well as LR using the buttons or `0`, `1`, `2` keys. Newly drawn and automatically detected HR faces start unset (gray), count as incomplete, and block submission until assigned. Previously saved values are preserved and remain editable.
+
 ## 4. Annotation Formats (Import/Export)
 
 `X-AnyLabeling` supports importing and exporting annotations in various standard formats. This section provides a guide for each. Access import/export functions via the `File` menu or dedicated toolbar buttons (e.g., `Import Annotations`, `Export Annotations`).

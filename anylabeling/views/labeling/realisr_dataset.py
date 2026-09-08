@@ -518,8 +518,9 @@ class RealISRDataset:
                 region_id = self._new_region_id(sample, used)
             used.add(region_id)
             record["region_id"] = region_id
-            value = record.get("recoverable", 0)
-            record["recoverable"] = value if value in (0, 1, 2) else 0
+            default = None if self.attribute == "face" else 0
+            value = record.get("recoverable", default)
+            record["recoverable"] = value if value in (0, 1, 2) else default
             record.setdefault("points", [])
             record["points"] = [list(point) for point in record["points"]]
             if self.attribute == "text":
@@ -732,8 +733,11 @@ class RealISRDataset:
             current_ids.add(region_id)
             previous = old_by_id.get(region_id, {})
             record["region_id"] = region_id
-            value = record.get("recoverable", previous.get("recoverable", 0))
-            record["recoverable"] = value if value in (0, 1, 2) else 0
+            default = None if self.attribute == "face" else 0
+            value = record.get(
+                "recoverable", previous.get("recoverable", default)
+            )
+            record["recoverable"] = value if value in (0, 1, 2) else default
             record.setdefault(
                 "label",
                 (
@@ -857,31 +861,35 @@ class RealISRDataset:
                     return False
         return True
 
+    @property
+    def recoverability_variants(self):
+        return VARIANTS if self.attribute == "face" else VARIANTS[1:]
+
     def _sample_dashboard_stats(self, sample):
         group = self.records[sample]
-        lr_values = {
+        values = {
             variant: {
                 record["region_id"]: record.get("recoverable")
                 for record in group[variant]
             }
-            for variant in VARIANTS[1:]
+            for variant in self.recoverability_variants
         }
         return {
             "instances": len(group["HR"]),
             "completed_instances": sum(
                 all(
-                    lr_values[variant].get(record["region_id"]) in (0, 1, 2)
-                    for variant in VARIANTS[1:]
+                    values[variant].get(record["region_id"]) in (0, 1, 2)
+                    for variant in self.recoverability_variants
                 )
                 for record in group["HR"]
             ),
             "recoverability_assigned": sum(
                 record.get("recoverable") in (0, 1, 2)
-                for variant in VARIANTS[1:]
+                for variant in self.recoverability_variants
                 for record in group[variant]
             ),
             "recoverability_total": sum(
-                len(group[variant]) for variant in VARIANTS[1:]
+                len(group[variant]) for variant in self.recoverability_variants
             ),
             "committed_samples": int(self.is_complete(sample, formal=True)),
         }
@@ -984,14 +992,14 @@ class RealISRDataset:
         for sample in self.samples:
             group = self.records[sample]
             instances += len(group["HR"])
-            lr_values = {
+            values = {
                 variant: {
                     record["region_id"]: record.get("recoverable")
                     for record in group[variant]
                 }
-                for variant in VARIANTS[1:]
+                for variant in self.recoverability_variants
             }
-            for variant in VARIANTS[1:]:
+            for variant in self.recoverability_variants:
                 total += len(group[variant])
                 assigned += sum(
                     record.get("recoverable") in (0, 1, 2)
@@ -999,8 +1007,8 @@ class RealISRDataset:
                 )
             completed_instances += sum(
                 all(
-                    lr_values[v].get(record["region_id"]) in (0, 1, 2)
-                    for v in VARIANTS[1:]
+                    values[v].get(record["region_id"]) in (0, 1, 2)
+                    for v in self.recoverability_variants
                 )
                 for record in group["HR"]
             )

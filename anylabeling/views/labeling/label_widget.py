@@ -5565,7 +5565,7 @@ class LabelingWidget(LabelDialog):
             shape.group_id = None
             shape.difficult = False
             shape.kie_linking = []
-            shape.other_data["recoverable"] = 0
+            shape.other_data["recoverable"] = None
             self.add_label(shape)
             self.apply_realisr_shape_color(shape)
             self.actions.edit_mode.setEnabled(True)
@@ -7202,7 +7202,9 @@ class LabelingWidget(LabelDialog):
         self.thumbnail_container.hide()
         self.file_search.setEnabled(False)
         instruction = (
-            self.tr("Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR")
+            self.tr(
+                "Real-ISR: draw face rectangles in HR; assign 0/1/2 in HR and LR"
+            )
             if dataset.attribute == "face"
             else self.tr(
                 "Real-ISR: edit text regions in HR; assign 0/1/2 in LR"
@@ -7339,7 +7341,8 @@ class LabelingWidget(LabelDialog):
             record.pop("realisr_text", None)
             record["region_id"] = self._realisr_region_id(shape)
             value = self._realisr_recoverable(shape)
-            record["recoverable"] = value if value in (0, 1, 2) else 0
+            default = None if self.realisr_dataset.attribute == "face" else 0
+            record["recoverable"] = value if value in (0, 1, 2) else default
             records.append(record)
         return records
 
@@ -7550,7 +7553,7 @@ class LabelingWidget(LabelDialog):
                 self.realisr_dataset.missing_counts(self.realisr_sample)[
                     variant
                 ]
-                for variant in REALISR_VARIANTS[1:]
+                for variant in REALISR_VARIANTS
             ):
                 self._realisr_completion_notified.discard(self.realisr_sample)
             self.refresh_realisr_file_item(self.realisr_sample)
@@ -7570,10 +7573,16 @@ class LabelingWidget(LabelDialog):
         selected_shapes = list(self.canvas.selected_shapes)
         if (
             not self.realisr_mode
-            or self.realisr_variant == "HR"
+            or (
+                self.realisr_variant == "HR"
+                and self.realisr_dataset.attribute != "face"
+            )
             or not selected_shapes
             or value not in (0, 1, 2)
         ):
+            return
+        # New HR shapes need stable region IDs before assigning a value.
+        if self.realisr_variant == "HR" and not self.flush_realisr_draft():
             return
         region_ids = [
             self._realisr_region_id(shape) for shape in selected_shapes
@@ -7615,7 +7624,7 @@ class LabelingWidget(LabelDialog):
                     self._realisr_region_id(next_shape)
                 )
                 self.realisr_workspace.focus_selected_object()
-        elif self.realisr_variant in REALISR_VARIANTS[1:]:
+        else:
             QtCore.QTimer.singleShot(
                 0,
                 functools.partial(
@@ -7635,10 +7644,15 @@ class LabelingWidget(LabelDialog):
         missing = self.realisr_dataset.missing_counts(sample)
         if missing[completed_variant]:
             return
-        lr_variants = list(REALISR_VARIANTS[1:])
-        current_index = lr_variants.index(completed_variant)
+        labeling_variants = list(
+            REALISR_VARIANTS
+            if self.realisr_dataset.attribute == "face"
+            else REALISR_VARIANTS[1:]
+        )
+        current_index = labeling_variants.index(completed_variant)
         search_order = (
-            lr_variants[current_index + 1 :] + lr_variants[:current_index]
+            labeling_variants[current_index + 1 :]
+            + labeling_variants[:current_index]
         )
         next_variant = next(
             (variant for variant in search_order if missing[variant]), None
@@ -7663,10 +7677,21 @@ class LabelingWidget(LabelDialog):
             self._realisr_completion_notified.add(sample)
             QMessageBox.information(
                 self,
-                self.tr("LR annotation complete"),
-                self.tr(
-                    "LR2, LR3 and LR4 are complete. You can now confirm "
-                    "the current group."
+                (
+                    self.tr("Annotation complete")
+                    if self.realisr_dataset.attribute == "face"
+                    else self.tr("LR annotation complete")
+                ),
+                (
+                    self.tr(
+                        "HR, LR2, LR3 and LR4 are complete. You can now confirm "
+                        "the current group."
+                    )
+                    if self.realisr_dataset.attribute == "face"
+                    else self.tr(
+                        "LR2, LR3 and LR4 are complete. You can now confirm "
+                        "the current group."
+                    )
                 ),
             )
 
@@ -7724,7 +7749,11 @@ class LabelingWidget(LabelDialog):
         for value, button in self.realisr_recoverability_buttons.items():
             button.setChecked(value == selected_value)
             button.setEnabled(
-                self.realisr_variant != "HR" and bool(selected_shapes)
+                (
+                    self.realisr_variant != "HR"
+                    or self.realisr_dataset.attribute == "face"
+                )
+                and bool(selected_shapes)
             )
         self.realisr_recoverability_group.setExclusive(True)
 
@@ -8391,7 +8420,7 @@ class LabelingWidget(LabelDialog):
             shape.selected = False
             shape.other_data = dict(getattr(shape, "other_data", {}) or {})
             shape.other_data.pop("region_id", None)
-            shape.other_data["recoverable"] = 0
+            shape.other_data["recoverable"] = None if task == "face" else 0
             normalized.append(shape)
         return normalized
 

@@ -5188,8 +5188,16 @@ Open each corresponding image and save it again to clear the redundant draft.</s
       <translation>Real-ISR：在 HR 编辑文本区域，在 LR 填写 0/1/2</translation>
     </message>
     <message>
-      <source>Real-ISR: draw face rectangles in HR; assign 0/1/2 in LR</source>
-      <translation>Real-ISR：在 HR 绘制人脸矩形框，在 LR 填写 0/1/2</translation>
+      <source>Real-ISR: draw face rectangles in HR; assign 0/1/2 in HR and LR</source>
+      <translation>Real-ISR：在 HR 绘制人脸矩形框，在 HR 和 LR 填写 0/1/2</translation>
+    </message>
+    <message>
+      <source>Annotation complete</source>
+      <translation>标注已完成</translation>
+    </message>
+    <message>
+      <source>HR, LR2, LR3 and LR4 are complete. You can now confirm the current group.</source>
+      <translation>HR、LR2、LR3 和 LR4 已全部完成，现在可以确认当前组。</translation>
     </message>
     <message>
       <source>LR annotation complete</source>

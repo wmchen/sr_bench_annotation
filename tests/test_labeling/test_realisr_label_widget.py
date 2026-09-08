@@ -511,6 +511,90 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         self.assertEqual(buttons[1].setChecked.call_args, call(True))
         self.assertEqual(buttons[2].setChecked.call_args, call(False))
 
+        widget.realisr_variant = "HR"
+        for attribute, enabled in (("face", True), ("text", False)):
+            dataset.attribute = attribute
+            LabelingWidget.update_realisr_ui(widget)
+            for button in buttons.values():
+                self.assertEqual(button.setEnabled.call_args, call(enabled))
+
+    def test_hr_face_assignment_flushes_new_region_before_setting_value(self):
+        shape = Shape(label="face", shape_type="rectangle")
+        shape.other_data["recoverable"] = None
+        dataset = SimpleNamespace(
+            attribute="face", set_recoverable_many=Mock(return_value=True)
+        )
+
+        def flush():
+            shape.other_data["region_id"] = "sample.png#0000"
+            return True
+
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="HR",
+            realisr_sample="sample.png",
+            realisr_dataset=dataset,
+            canvas=SimpleNamespace(shapes=[shape], selected_shapes=[shape]),
+            flush_realisr_draft=Mock(side_effect=flush),
+            _realisr_region_id=LabelingWidget._realisr_region_id,
+            _realisr_recoverable=LabelingWidget._realisr_recoverable,
+            apply_realisr_shape_color=Mock(),
+            actions=SimpleNamespace(save=Mock()),
+            realisr_draft_timer=Mock(),
+            update_realisr_ui=Mock(),
+            refresh_realisr_file_item=Mock(),
+            advance_realisr_variant=Mock(),
+        )
+        with patch.object(QtCore.QTimer, "singleShot"):
+            LabelingWidget.set_realisr_recoverable(widget, 2)
+        widget.flush_realisr_draft.assert_called_once()
+        dataset.set_recoverable_many.assert_called_once_with(
+            "sample.png", "HR", ["sample.png#0000"], 2
+        )
+        self.assertEqual(shape.other_data["recoverable"], 2)
+        self.assertTrue(widget._realisr_draft_dirty)
+        widget.realisr_workspace = SimpleNamespace(
+            canvases={"HR": widget.canvas}
+        )
+        self.assertEqual(
+            LabelingWidget._realisr_canvas_records(widget)[0]["recoverable"], 2
+        )
+        shape.other_data["recoverable"] = None
+        self.assertIsNone(
+            LabelingWidget._realisr_canvas_records(widget)[0]["recoverable"]
+        )
+
+    def test_face_completion_returns_to_unset_hr(self):
+        shape = SimpleNamespace(
+            other_data={"region_id": "r", "recoverable": None}
+        )
+        widget = SimpleNamespace(
+            realisr_mode=True,
+            realisr_variant="LR4",
+            realisr_sample="sample.png",
+            realisr_dataset=SimpleNamespace(
+                attribute="face",
+                missing_counts=lambda _: {
+                    "HR": 1,
+                    "LR2": 0,
+                    "LR3": 0,
+                    "LR4": 0,
+                },
+            ),
+            realisr_workspace=Mock(),
+            canvas=SimpleNamespace(shapes=[shape]),
+            flush_realisr_draft=Mock(return_value=True),
+            _realisr_region_id=LabelingWidget._realisr_region_id,
+            _realisr_recoverable=LabelingWidget._realisr_recoverable,
+        )
+        with patch.object(QtWidgets.QMessageBox, "information") as information:
+            LabelingWidget.advance_realisr_variant(widget, "sample.png", "LR4")
+        widget.realisr_workspace.set_active_variant.assert_called_once_with(
+            "HR"
+        )
+        widget.realisr_workspace.select_region.assert_called_once_with("r")
+        information.assert_not_called()
+
     def test_next_uncommitted_sample_skips_committed_without_wrapping(self):
         committed = {"000002.png", "000003.png", "000005.png"}
         widget = SimpleNamespace(
@@ -663,7 +747,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         self.assertEqual(final_shape.label, "face")
         self.assertEqual(final_shape.description, "")
         self.assertEqual(final_shape.group_id, None)
-        self.assertEqual(final_shape.other_data["recoverable"], 0)
+        self.assertIsNone(final_shape.other_data["recoverable"])
         widget.add_label.assert_called_once_with(final_shape)
         widget.set_dirty.assert_called_once_with()
 
@@ -694,9 +778,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
                 edit=SimpleNamespace(
                     text=Mock(return_value=""), setText=Mock()
                 ),
-                pop_up=Mock(
-                    return_value=("text", {}, None, "", False, [])
-                ),
+                pop_up=Mock(return_value=("text", {}, None, "", False, [])),
             ),
             validate_label=Mock(return_value=True),
             attributes={},
@@ -772,9 +854,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             LabelingWidget.apply_realisr_shape_color(
                 widget, lr_shape, variant="LR2"
             )
-            self.assertEqual(
-                lr_shape.line_color.getRgb()[:3], expected_color
-            )
+            self.assertEqual(lr_shape.line_color.getRgb()[:3], expected_color)
 
         widget.realisr_dataset.attribute = "face"
         face_shape = Shape(label="face", description="")
@@ -948,7 +1028,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         self.assertEqual(len(shapes), 1)
         self.assertEqual(shapes[0].label, "face")
         self.assertEqual(shapes[0].description, "")
-        self.assertEqual(shapes[0].other_data["recoverable"], 0)
+        self.assertIsNone(shapes[0].other_data["recoverable"])
 
     def test_instance_result_matches_multiple_descriptions_by_region_id(self):
         target = Shape(
@@ -1007,9 +1087,7 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         recognized_target.description = "new target text"
         recognized_other = copy.deepcopy(other)
         recognized_other.description = "new other text"
-        result = AutoLabelingResult(
-            [recognized_other, recognized_target]
-        )
+        result = AutoLabelingResult([recognized_other, recognized_target])
         context = {
             "mode": "instance",
             "target_region_ids": [
@@ -1041,12 +1119,8 @@ class RealISRLabelWidgetTest(unittest.TestCase):
         hr_second = SimpleNamespace(selected=False)
         lr_first = SimpleNamespace(selected=False)
         lr_second = SimpleNamespace(selected=False)
-        hr_canvas = SimpleNamespace(
-            selected_shapes=[old_hr], update=Mock()
-        )
-        lr_canvas = SimpleNamespace(
-            selected_shapes=[old_lr], update=Mock()
-        )
+        hr_canvas = SimpleNamespace(selected_shapes=[old_hr], update=Mock())
+        lr_canvas = SimpleNamespace(selected_shapes=[old_lr], update=Mock())
         workspace = SimpleNamespace(
             active_variant="HR",
             canvases={"HR": hr_canvas, "LR2": lr_canvas},
