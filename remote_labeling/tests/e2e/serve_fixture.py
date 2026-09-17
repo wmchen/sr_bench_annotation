@@ -132,6 +132,7 @@ def main() -> None:
             host=settings.host,
             port=settings.port,
             access_log=False,
+            proxy_headers=False,
         )
         credential.unlink(missing_ok=True)
 

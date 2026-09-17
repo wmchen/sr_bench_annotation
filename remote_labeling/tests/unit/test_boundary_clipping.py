@@ -225,7 +225,7 @@ def test_scan_persists_repairs_and_protects_online_edits(
     report = service.scan("text")
     assert report["errors"] == [] and len(report["repairs"]) == 2
     token = (settings.state_dir / "owner.token").read_text().strip()
-    session = digest(service.exchange(token, "test")[0])
+    session = digest(service.exchange(token, "test", "127.0.0.1")[0])
     sample = service.get_sample(session, "text", "000000.png")
     assert sample["formal"]["HR"][0]["points"] == [[0, 10.25], [120, 90]]
     tab = secrets.token_hex(16)

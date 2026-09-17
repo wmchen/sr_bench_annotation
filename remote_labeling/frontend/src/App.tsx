@@ -19,6 +19,7 @@ const statusText = {saved:"已保存",pending:"待保存",saving:"保存中…",
 export function App() {
   const [user,setUser] = useState<Session | null>(null);
   const [checking,setChecking] = useState(true);
+  const [restoreFailed,setRestoreFailed] = useState(false);
   const [token,setToken] = useState("");
   const [nickname,setNickname] = useState("");
   const [error,setError] = useState("");
@@ -89,16 +90,34 @@ export function App() {
     const [s,j] = await Promise.all([api<Slot>("/model-slot"),api<Job[]>("/inference-jobs")]);
     setSlot(s);setJobs(j);
   }
+  async function restoreAccess() {
+    setChecking(true);setRestoreFailed(false);setError("");
+    try {
+      setUser(await api<Session>("/session/restore","POST"));
+    } catch(value) {
+      if(!(value instanceof ApiError && value.status===401)) {
+        setRestoreFailed(true);
+        setError(value instanceof Error?value.message:"无法恢复访问会话，请重试");
+      }
+    } finally { setChecking(false); }
+  }
   useEffect(()=>{
+    // Same-document share navigation must also take priority over IP login.
+    const shareNavigation=()=>{
+      if(new URLSearchParams(location.hash.slice(1)).has("token")) {
+        void run(async()=>{await release();window.location.reload();});
+      }
+    };
+    window.addEventListener("hashchange",shareNavigation);
     const fragment = new URLSearchParams(location.hash.slice(1));
-    const capability = fragment.get("token");
-    if(capability) {
-      setToken(capability);
+    if(fragment.has("token")) {
+      setToken(fragment.get("token") ?? "");
       historyReplace();
       setChecking(false);
     } else {
-      api<Session>("/session").then(setUser).catch(()=>{}).finally(()=>setChecking(false));
+      void restoreAccess();
     }
+    return()=>window.removeEventListener("hashchange",shareNavigation);
   },[]);
   function historyReplace() { window.history.replaceState(null,"",location.pathname+location.search); }
   useEffect(()=>{
@@ -365,11 +384,14 @@ export function App() {
   if(!user)return <main className="login">
     <div className="login-card"><span className="eyebrow">REAL-ISR / ANNOTATION</span><h1>远程标注工作台</h1>
       <p>在原始像素中判断细节，在四个倍率间保持一致。</p>
-      <form onSubmit={e=>{e.preventDefault();void run(async()=>{setUser(await api<Session>("/session","POST",{token,nickname}));setToken("");});}}>
+      <form onSubmit={e=>{e.preventDefault();void run(async()=>{setUser(await api<Session>("/session","POST",{token,nickname}));setToken("");setRestoreFailed(false);});}}>
         <label>访问凭据<input type="password" required value={token} onChange={e=>setToken(e.target.value)} autoComplete="off"/></label>
         <label>显示昵称<input value={nickname} onChange={e=>setNickname(e.target.value)} placeholder="用于显示样本占用者" maxLength={80}/></label>
         <button className="primary" disabled={working}>进入工作台</button>
-      </form>{error && <p className="error-text" role="alert">{error}</p>}
+      </form>
+      <p className="subtle">使用 owner token 验证后将记住当前 IP，同 IP 的浏览器可自动进入。点击“退出”会取消绑定。</p>
+      {restoreFailed && <button disabled={working} onClick={()=>void restoreAccess()}>重试恢复会话</button>}
+      {error && <p className="error-text" role="alert">{error}</p>}
     </div>
   </main>;
   const currentDataset=datasets.find(d=>d.id===dataset);
@@ -377,7 +399,7 @@ export function App() {
   return <div className="app">
     <header className="topbar"><div><span className="brand">Real-ISR</span><span className="subtle">远程标注工作台</span></div>
       <div><span className="connection">{connection}</span><span>{user.nickname} · {user.role==="owner"?"所有者":user.role==="edit"?"可编辑":"可查看"}</span>
-      <button onClick={()=>void run(async()=>{await release();await api("/session","DELETE");setUser(null);setSample(null);cache.current.clear();})}>退出</button></div>
+      <button title={user.role==="owner"?"退出并取消当前 IP 的免登录绑定":undefined} onClick={()=>void run(async()=>{await release();await api("/session","DELETE");setUser(null);setSample(null);cache.current.clear();})}>退出</button></div>
     </header>
     {error && <div className="error-banner" role="alert"><span>{error}</span>
       <button onClick={()=>void run(async()=>{await queue.current?.flush();})}>重试保存</button>

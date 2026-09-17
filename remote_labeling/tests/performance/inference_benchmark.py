@@ -94,7 +94,9 @@ def main() -> None:
         for task in settings.datasets:
             service.scan(task)
         with TestClient(
-            create_app(settings), headers={"Origin": settings.public_origin}
+            create_app(settings),
+            headers={"Origin": settings.public_origin},
+            client=("127.0.0.1", 50000),
         ) as client:
             assert (
                 client.post(

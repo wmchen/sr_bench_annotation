@@ -192,7 +192,10 @@ def test_origin_protection(client) -> None:
 def test_concurrent_sessions_single_winner(service, settings) -> None:
     """SQLite's transactional acquire has exactly one winner under contention."""
     token = (settings.state_dir / "owner.token").read_text().strip()
-    sessions = [digest(service.exchange(token, str(i))[0]) for i in range(10)]
+    sessions = [
+        digest(service.exchange(token, str(i), "127.0.0.1")[0])
+        for i in range(10)
+    ]
 
     def acquire(sid: str) -> int:
         try:

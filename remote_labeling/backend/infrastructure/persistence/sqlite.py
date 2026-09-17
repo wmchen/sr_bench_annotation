@@ -26,7 +26,7 @@ class SQLiteStore:
         self._lock_file = None
 
     def initialize(self) -> None:
-        """Install supported schema without changing an existing version."""
+        """Install the schema and migrate older supported versions."""
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         with closing(self.connect()) as db:
             actual_mode = db.execute(
@@ -39,11 +39,15 @@ class SQLiteStore:
                     503,
                 )
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise DomainError("schema", "不支持的数据库版本")
             if not version:
                 db.executescript(
                     Path(__file__).with_name("001.sql").read_text()
+                )
+            if version < 2:
+                db.executescript(
+                    Path(__file__).with_name("002.sql").read_text()
                 )
 
     def connect(self) -> sqlite3.Connection:

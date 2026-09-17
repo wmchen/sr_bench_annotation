@@ -22,7 +22,9 @@ def owner(service, settings) -> str:
     """Create an independently authorized owner access session."""
     return digest(
         service.exchange(
-            (settings.state_dir / "owner.token").read_text().strip(), "test"
+            (settings.state_dir / "owner.token").read_text().strip(),
+            "test",
+            "127.0.0.1",
         )[0]
     )
 
@@ -415,6 +417,10 @@ def test_cli_restore_invalidates_authority_and_preserves_saved_data(
     with store.read() as db:
         assert db.execute("SELECT COUNT(*) FROM leases").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+        assert (
+            db.execute("SELECT COUNT(*) FROM owner_ip_bindings").fetchone()[0]
+            == 0
+        )
         assert (
             db.execute(
                 "SELECT revoked FROM shares WHERE id=?", (share["id"],)

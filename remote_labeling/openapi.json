@@ -77,6 +77,25 @@
         }
       }
     },
+    "/api/v1/session/restore": {
+      "post": {
+        "summary": "Restore Session",
+        "description": "Resume an existing session or log in through a remembered owner IP.",
+        "operationId": "restore_session_api_v1_session_restore_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/datasets": {
       "get": {
         "summary": "Datasets",

@@ -59,7 +59,9 @@ def service(settings: Settings) -> AnnotationService:
 def client(settings: Settings, service: AnnotationService):
     """Use the actual lifespan, permission boundary and owner session."""
     with TestClient(
-        create_app(settings), headers={"Origin": settings.public_origin}
+        create_app(settings),
+        headers={"Origin": settings.public_origin},
+        client=("127.0.0.1", 50000),
     ) as client:
         token = (settings.state_dir / "owner.token").read_text().strip()
         response = client.post(

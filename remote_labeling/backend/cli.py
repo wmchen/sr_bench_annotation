@@ -91,6 +91,7 @@ def main() -> None:
                 port=settings.port,
                 workers=1,
                 access_log=False,
+                proxy_headers=False,
             )
             return
         if args.command == "backup":
@@ -116,13 +117,15 @@ def main() -> None:
                     raise DomainError("backup", "备份完整性检查失败")
             settings.state_dir.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(args.file, store.path)
-        store.initialize()
+        settings.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         store.acquire_instance()
         try:
+            store.initialize()
             if args.command == "restore":
                 with store.transaction() as db:
                     db.execute("DELETE FROM leases")
                     db.execute("DELETE FROM sessions")
+                    db.execute("DELETE FROM owner_ip_bindings")
                     db.execute("DELETE FROM operations")
                     db.execute("DELETE FROM shares WHERE role='owner'")
                     db.execute("UPDATE shares SET revoked=1")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import secrets
@@ -30,6 +31,17 @@ def encode(value: Any) -> str:
 def digest(value: str) -> str:
     """Hash capability material; never store raw access tokens in SQLite."""
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def normalize_ip(value: str) -> str:
+    """Canonicalize a direct peer IP, including IPv4-mapped IPv6."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise DomainError("unauthorized", "无法识别访问来源 IP", 401) from exc
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        return str(address.ipv4_mapped)
+    return str(address)
 
 
 def event(
@@ -63,7 +75,7 @@ class AnnotationService:
             if path.exists():
                 # Recover a credential written before an interrupted DB commit.
                 token = path.read_text(encoding="utf-8").strip()
-                if len(token) < 32:
+                if not 32 <= len(token) <= 256:
                     raise DomainError(
                         "owner_credential", "所有者凭据文件无效，不能初始化"
                     )
@@ -82,9 +94,69 @@ class AnnotationService:
             )
         return token
 
-    def exchange(self, token: str, nickname: str) -> tuple[str, dict]:
-        """Exchange a capability for an independent authenticated session."""
+    def sync_owner_credential(self) -> None:
+        """Apply an edited credential at startup while holding the instance lock."""
+        try:
+            token = (
+                (self.settings.state_dir / "owner.token")
+                .read_text(encoding="utf-8")
+                .strip()
+            )
+        except (OSError, UnicodeError) as exc:
+            raise DomainError(
+                "owner_credential", "无法读取 owner.token，服务未启动"
+            ) from exc
+        if not 32 <= len(token) <= 256:
+            raise DomainError(
+                "owner_credential", "owner.token 必须包含 32 至 256 个字符"
+            )
+        fingerprint = digest(token)
+        with self.store.transaction() as db:
+            owner = db.execute(
+                "SELECT * FROM shares WHERE role='owner'"
+            ).fetchone()
+            if not owner:
+                raise DomainError(
+                    "owner_credential", "缺少所有者凭据，请先初始化"
+                )
+            if owner["digest"] == fingerprint:
+                return
+            db.execute("DELETE FROM owner_ip_bindings")
+            db.execute(
+                "DELETE FROM leases WHERE session IN "
+                "(SELECT id FROM sessions WHERE share=?)",
+                (owner["id"],),
+            )
+            db.execute("DELETE FROM sessions WHERE share=?", (owner["id"],))
+            db.execute(
+                "UPDATE shares SET digest=?,revoked=0,expires=NULL WHERE id=?",
+                (fingerprint, owner["id"]),
+            )
+
+    def _new_session(
+        self, db: Any, share: str, nickname: str, owner_ip: str | None
+    ) -> tuple[str, dict]:
+        """Issue an independent session inside the caller's transaction."""
+        cookie = secrets.token_urlsafe(32)
+        db.execute(
+            "INSERT INTO sessions(id,share,nickname,expires,owner_ip) "
+            "VALUES(?,?,?,?,?)",
+            (
+                digest(cookie),
+                share,
+                nickname,
+                time.time() + self.settings.session_seconds,
+                owner_ip,
+            ),
+        )
+        return cookie, self.auth(db, digest(cookie))
+
+    def exchange(
+        self, token: str, nickname: str, client_ip: str | None = None
+    ) -> tuple[str, dict]:
+        """Exchange a capability; owner credentials also bind the direct peer IP."""
         now = time.time()
+        nickname = nickname.strip() or "访客"
         with self.store.transaction() as db:
             share = db.execute(
                 "SELECT * FROM shares WHERE digest=?", (digest(token),)
@@ -97,17 +169,88 @@ class AnnotationService:
                 raise DomainError(
                     "unauthorized", "链接无效、已撤销或已到期", 401
                 )
-            cookie = secrets.token_urlsafe(32)
-            db.execute(
-                "INSERT INTO sessions VALUES(?,?,?,?)",
-                (
-                    digest(cookie),
-                    share["id"],
-                    nickname.strip() or "访客",
-                    now + self.settings.session_seconds,
-                ),
+            owner_ip = None
+            if share["role"] == "owner":
+                owner_ip = normalize_ip(client_ip or "")
+                db.execute(
+                    "INSERT INTO owner_ip_bindings VALUES(?,?,?,?) "
+                    "ON CONFLICT(ip) DO UPDATE SET "
+                    "owner_digest=excluded.owner_digest,"
+                    "nickname=excluded.nickname,bound_at=excluded.bound_at",
+                    (owner_ip, share["digest"], nickname, now),
+                )
+            return self._new_session(db, share["id"], nickname, owner_ip)
+
+    def restore_session(
+        self, session: str, client_ip: str
+    ) -> tuple[str | None, dict]:
+        """Restore a session or issue an owner session from a remembered IP."""
+        client_ip = normalize_ip(client_ip)
+        with self.store.transaction() as db:
+            existing = db.execute(
+                "SELECT h.role FROM sessions s JOIN shares h ON h.id=s.share "
+                "WHERE s.id=?",
+                (session,),
+            ).fetchone()
+            # Even expired/revoked share sessions must never become owners.
+            if existing and existing["role"] != "owner":
+                return None, self.auth(db, session)
+            if existing:
+                try:
+                    user = self.auth(db, session)
+                except DomainError as exc:
+                    if exc.code != "unauthorized":
+                        raise
+                else:
+                    if user["owner_ip"] == client_ip:
+                        return None, user
+            binding = db.execute(
+                "SELECT b.*,h.id share FROM owner_ip_bindings b "
+                "JOIN shares h ON h.digest=b.owner_digest "
+                "WHERE b.ip=? AND h.role='owner' AND h.revoked=0 "
+                "AND (h.expires IS NULL OR h.expires>?)",
+                (client_ip, time.time()),
+            ).fetchone()
+            if not binding:
+                raise DomainError(
+                    "unauthorized", "此 IP 尚未验证，请输入 owner token", 401
+                )
+            return self._new_session(
+                db, binding["share"], binding["nickname"], client_ip
             )
-            return cookie, self.auth(db, digest(cookie))
+
+    def check_session_ip(self, session: str, client_ip: str) -> None:
+        """Reject owner cookies presented from a different direct peer IP."""
+        with self.store.read() as db:
+            user = self.auth(db, session)
+            if user["role"] == "owner" and user["owner_ip"] != normalize_ip(
+                client_ip
+            ):
+                raise DomainError(
+                    "unauthorized", "访问 IP 已改变，请重新验证", 401
+                )
+
+    def logout(self, session: str) -> None:
+        """Forget an owner's IP and all its sessions, or end one share session."""
+        with self.store.transaction() as db:
+            user = self.auth(db, session)
+            if user["role"] == "owner":
+                db.execute(
+                    "DELETE FROM owner_ip_bindings WHERE ip=?",
+                    (user["owner_ip"],),
+                )
+                db.execute(
+                    "DELETE FROM leases WHERE session IN "
+                    "(SELECT id FROM sessions WHERE owner_ip=?)",
+                    (user["owner_ip"],),
+                )
+                db.execute(
+                    "DELETE FROM sessions WHERE owner_ip=?",
+                    (user["owner_ip"],),
+                )
+            else:
+                db.execute("DELETE FROM leases WHERE session=?", (session,))
+                db.execute("DELETE FROM sessions WHERE id=?", (session,))
 
     def auth(
         self,
@@ -121,7 +264,7 @@ class AnnotationService:
     ) -> dict:
         """Recheck current share validity inside every use-case transaction."""
         row = db.execute(
-            "SELECT s.id session_id,s.nickname,s.expires session_expires,h.* "
+            "SELECT s.id session_id,s.nickname,s.expires session_expires,s.owner_ip,h.* "
             "FROM sessions s JOIN shares h ON h.id=s.share WHERE s.id=?",
             (session or "",),
         ).fetchone()
@@ -133,6 +276,14 @@ class AnnotationService:
             or (row["expires"] is not None and row["expires"] <= now)
         ):
             raise DomainError("unauthorized", "访问权限已失效", 401)
+        if (
+            row["role"] == "owner"
+            and not db.execute(
+                "SELECT 1 FROM owner_ip_bindings WHERE ip=? AND owner_digest=?",
+                (row["owner_ip"], row["digest"]),
+            ).fetchone()
+        ):
+            raise DomainError("unauthorized", "IP 授权已失效，请重新验证", 401)
         value = dict(row)
         if owner and value["role"] != "owner":
             raise DomainError("forbidden", "仅所有者可执行此操作", 403)

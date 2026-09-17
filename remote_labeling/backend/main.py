@@ -52,10 +52,11 @@ def create_app(settings: Settings) -> FastAPI:
         settings.preflight()
         if not store.path.exists():
             raise RuntimeError("请先运行 init 初始化服务")
-        await run_in_threadpool(store.initialize)
         store.acquire_instance()
         inference = exports = None
         try:
+            await run_in_threadpool(store.initialize)
+            await run_in_threadpool(service.sync_owner_credential)
             settings.cache_dir.mkdir(parents=True, exist_ok=True)
             with store.transaction() as db:
                 db.execute("DELETE FROM leases")
@@ -201,14 +202,20 @@ def create_app(settings: Settings) -> FastAPI:
         )
         return response
 
+    def client_ip(request: Request) -> str:
+        """Use the direct transport peer, never a client-supplied header."""
+        return request.client.host if request.client else ""
+
     def session(request: Request) -> str:
-        return digest(request.cookies.get("realisr_session", ""))
+        """Check the request IP before handing a cookie to a use case."""
+        sid = digest(request.cookies.get("realisr_session", ""))
+        service.check_session_ip(sid, client_ip(request))
+        return sid
 
     prefix = "/api/v1"
 
-    @app.post(prefix + "/session", response_model=SessionView)
-    def exchange(request: Request, body: Exchange, response: Response) -> dict:
-        cookie, _ = service.exchange(body.token, body.nickname)
+    def set_session_cookie(response: Response, cookie: str) -> None:
+        """Use the same cookie policy for token and remembered-IP logins."""
         response.set_cookie(
             "realisr_session",
             cookie,
@@ -217,7 +224,25 @@ def create_app(settings: Settings) -> FastAPI:
             secure=settings.public_origin.startswith("https://"),
             max_age=settings.session_seconds,
         )
+
+    @app.post(prefix + "/session", response_model=SessionView)
+    def exchange(request: Request, body: Exchange, response: Response) -> dict:
+        cookie, _ = service.exchange(
+            body.token, body.nickname, client_ip(request)
+        )
+        set_session_cookie(response, cookie)
         return service.whoami(digest(cookie))
+
+    @app.post(prefix + "/session/restore", response_model=SessionView)
+    def restore_session(request: Request, response: Response) -> dict:
+        """Resume an existing session or log in through a remembered owner IP."""
+        cookie, user = service.restore_session(
+            digest(request.cookies.get("realisr_session", "")),
+            client_ip(request),
+        )
+        if cookie is not None:
+            set_session_cookie(response, cookie)
+        return service.whoami(user["session_id"])
 
     @app.get(prefix + "/session", response_model=SessionView)
     def whoami(request: Request) -> dict:
@@ -226,10 +251,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.delete(prefix + "/session")
     def logout(request: Request, response: Response) -> dict:
         sid = session(request)
-        with store.transaction() as db:
-            service.auth(db, sid)
-            db.execute("DELETE FROM leases WHERE session=?", (sid,))
-            db.execute("DELETE FROM sessions WHERE id=?", (sid,))
+        service.logout(sid)
         response.delete_cookie("realisr_session")
         return {"logged_out": True}
 
@@ -406,8 +428,7 @@ def create_app(settings: Settings) -> FastAPI:
     async def events(
         request: Request, after: int = Query(0, ge=0)
     ) -> Response:
-        sid = session(request)
-        await run_in_threadpool(service.whoami, sid)
+        sid = await run_in_threadpool(session, request)
         try:
             last = max(after, int(request.headers.get("last-event-id", "0")))
         except ValueError:

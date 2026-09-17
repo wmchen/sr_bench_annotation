@@ -184,3 +184,87 @@ test("uncached model offers automatic download and shows progress",async({page})
   await expect(page.getByRole("button",{name:"下载并加载",exact:true})).toBeDisabled();
   expect(loads).toBe(1);
 });
+
+test("remembered owner IP survives cookies and new browser, logout forgets it",async({page,browser})=>{
+  // Start unbound even when another test has already verified localhost.
+  await login(page);
+  await page.getByRole("button",{name:"退出",exact:true}).click();
+  await page.goto("/");
+  await expect(page.getByLabel("访问凭据")).toBeVisible();
+  const {token}=JSON.parse(readFileSync(process.env.REALISR_E2E_TOKEN??"/tmp/realisr-e2e-token","utf8"));
+  await page.getByLabel("访问凭据").fill(token);
+  await page.getByLabel("显示昵称").fill("IP 记忆测试");
+  await page.getByRole("button",{name:"进入工作台"}).click();
+  await expect(page.locator(".topbar")).toContainText("IP 记忆测试 · 所有者");
+  const firstSession=(await (await page.request.get("/api/v1/session")).json()).session_id;
+  await page.context().clearCookies();
+  await page.reload();
+  await expect(page.locator(".topbar")).toContainText("IP 记忆测试 · 所有者");
+  const renewedSession=(await (await page.request.get("/api/v1/session")).json()).session_id;
+  expect(renewedSession).not.toBe(firstSession);
+  const context=await browser.newContext();
+  try {
+    const second=await context.newPage();
+    await second.goto("/");
+    await expect(second.locator(".topbar")).toContainText("IP 记忆测试 · 所有者");
+    const independentSession=(await (await second.request.get("/api/v1/session")).json()).session_id;
+    expect(independentSession).not.toBe(renewedSession);
+    await second.getByRole("button",{name:"退出",exact:true}).click();
+    await expect(second.getByLabel("访问凭据")).toBeVisible();
+    await second.reload();
+    await expect(second.getByLabel("访问凭据")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("访问凭据")).toBeVisible();
+    await page.screenshot({path:"test-results/owner-ip-login.png",fullPage:true});
+  } finally { await context.close(); }
+});
+
+test("share link on a remembered IP retains its role and revocation",async({page,browser})=>{
+  await login(page);
+  const response=await page.request.post("/api/v1/shares",{
+    headers:{Origin:new URL(page.url()).origin},
+    data:{dataset:"text",sample:null,role:"view",expires:null},
+  });
+  expect(response.ok()).toBeTruthy();
+  const share=await response.json();
+  const context=await browser.newContext();
+  try {
+    const visitor=await context.newPage();
+    await visitor.goto("/");
+    await expect(visitor.locator(".topbar")).toContainText("所有者");
+    await visitor.goto(share.url);
+    await expect(visitor.getByLabel("访问凭据")).toBeVisible();
+    await visitor.getByRole("button",{name:"进入工作台"}).click();
+    await expect(visitor.locator(".topbar")).toContainText("可查看");
+    await expect(visitor.getByRole("button",{name:"重新扫描数据集"})).toHaveCount(0);
+    await visitor.reload();
+    await expect(visitor.locator(".topbar")).toContainText("可查看");
+    const revoke=await page.request.delete("/api/v1/shares/"+share.id,{headers:{Origin:new URL(page.url()).origin}});
+    expect(revoke.ok()).toBeTruthy();
+    await visitor.reload();
+    await expect(visitor.getByLabel("访问凭据")).toBeVisible();
+    await expect(visitor.locator(".topbar")).toHaveCount(0);
+    // Even an invalid explicit capability must not fall back to IP login.
+    await visitor.goto("/#token="+"invalid".repeat(8));
+    await expect(visitor.getByLabel("访问凭据")).toHaveValue("invalid".repeat(8));
+    await visitor.getByRole("button",{name:"进入工作台"}).click();
+    await expect(visitor.getByRole("alert")).toBeVisible();
+    await expect(visitor.locator(".topbar")).toHaveCount(0);
+  } finally { await context.close(); }
+});
+
+test("session restore reports server failure and supports retry",async({page})=>{
+  await login(page);
+  await page.context().clearCookies();
+  let attempts=0;
+  await page.route("**/api/v1/session/restore",async route=>{
+    attempts++;
+    if(attempts===1)await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"storage_unavailable",message:"存储暂不可用，请重试"}})});
+    else await route.continue();
+  });
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("存储暂不可用");
+  await page.getByRole("button",{name:"重试恢复会话"}).click();
+  await expect(page.locator(".topbar")).toContainText("所有者");
+  expect(attempts).toBe(2);
+});

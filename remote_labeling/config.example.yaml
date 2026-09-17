@@ -44,4 +44,6 @@ queue_limit: 10
 load_timeout_seconds: 180
 lease_seconds: 90
 heartbeat_seconds: 20
+# Cookie 会话有效期；owner IP 绑定持续保留，退出或修改 owner.token 后重启会失效。
+# 按直连部署识别来源 IP；不信任反向代理转发头。
 session_seconds: 43200
