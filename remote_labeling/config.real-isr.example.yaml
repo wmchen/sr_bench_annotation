@@ -12,10 +12,10 @@ export_dir: /var/lib/realisr-remote-exports
 cache_dir: /var/cache/realisr-remote
 datasets:
   text:
-    root: /picassox/intelligent-cpfs/graphic-image/cwm/sr_bench/data/text
+    root: /path/text
     attribute: text
   face:
-    root: /picassox/intelligent-cpfs/graphic-image/cwm/sr_bench/data/face
+    root: /path/face
     attribute: face
 # 不需要填写内置模型的权重或字典路径。首次点击“下载并加载”时自动准备。
 # 省略 models 也会启用这两套模型；models: {} 可关闭模型功能。
