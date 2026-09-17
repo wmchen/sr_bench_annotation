@@ -1,0 +1,2205 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Real-ISR Remote",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/session": {
+      "get": {
+        "summary": "Whoami",
+        "operationId": "whoami_api_v1_session_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Exchange",
+        "operationId": "exchange_api_v1_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Exchange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Logout",
+        "operationId": "logout_api_v1_session_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Logout Api V1 Session Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets": {
+      "get": {
+        "summary": "Datasets",
+        "operationId": "datasets_api_v1_datasets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Datasets Api V1 Datasets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/scan": {
+      "post": {
+        "summary": "Scan",
+        "operationId": "scan_api_v1_datasets__dataset__scan_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Scan Api V1 Datasets  Dataset  Scan Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples": {
+      "get": {
+        "summary": "Samples",
+        "operationId": "samples_api_v1_datasets__dataset__samples_get",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Search"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Samples Api V1 Datasets  Dataset  Samples Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples/{sample}": {
+      "get": {
+        "summary": "Sample",
+        "operationId": "sample_api_v1_datasets__dataset__samples__sample__get",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples/{sample}/images/{variant}": {
+      "get": {
+        "summary": "Image",
+        "operationId": "image_api_v1_datasets__dataset__samples__sample__images__variant__get",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples/{sample}/lease": {
+      "post": {
+        "summary": "Acquire",
+        "operationId": "acquire_api_v1_datasets__dataset__samples__sample__lease_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Acquire Api V1 Datasets  Dataset  Samples  Sample  Lease Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Renew",
+        "operationId": "renew_api_v1_datasets__dataset__samples__sample__lease_put",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Renew Api V1 Datasets  Dataset  Samples  Sample  Lease Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Release",
+        "operationId": "release_api_v1_datasets__dataset__samples__sample__lease_delete",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Release Api V1 Datasets  Dataset  Samples  Sample  Lease Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples/{sample}/draft": {
+      "put": {
+        "summary": "Draft",
+        "operationId": "draft_api_v1_datasets__dataset__samples__sample__draft_put",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets/{dataset}/samples/{sample}/commit": {
+      "post": {
+        "summary": "Commit",
+        "operationId": "commit_api_v1_datasets__dataset__samples__sample__commit_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shares": {
+      "get": {
+        "summary": "Shares",
+        "operationId": "shares_api_v1_shares_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Shares Api V1 Shares Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Share",
+        "operationId": "share_api_v1_shares_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Share Api V1 Shares Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shares/{share}": {
+      "delete": {
+        "summary": "Revoke",
+        "operationId": "revoke_api_v1_shares__share__delete",
+        "parameters": [
+          {
+            "name": "share",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Share"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Api V1 Shares  Share  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "summary": "Models",
+        "operationId": "models_api_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelView"
+                  },
+                  "type": "array",
+                  "title": "Response Models Api V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "summary": "Get Devices",
+        "operationId": "get_devices_api_v1_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Devices Api V1 Devices Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/model-slot": {
+      "get": {
+        "summary": "Slot",
+        "operationId": "slot_api_v1_model_slot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Control",
+        "operationId": "control_api_v1_model_slot_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inference-jobs": {
+      "get": {
+        "summary": "Jobs",
+        "operationId": "jobs_api_v1_inference_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobView"
+                  },
+                  "type": "array",
+                  "title": "Response Jobs Api V1 Inference Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Infer",
+        "operationId": "infer_api_v1_inference_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Infer Api V1 Inference Jobs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inference-jobs/{job}": {
+      "get": {
+        "summary": "Job",
+        "description": "Read the requesting session's task and recorded inference timing.",
+        "operationId": "job_api_v1_inference_jobs__job__get",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_v1_inference_jobs__job__delete",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Cancel Api V1 Inference Jobs  Job  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports": {
+      "get": {
+        "summary": "Exports",
+        "operationId": "exports_api_v1_exports_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Exports Api V1 Exports Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Export",
+        "operationId": "export_api_v1_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Export Api V1 Exports Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports/{export_id}/download": {
+      "get": {
+        "summary": "Download",
+        "operationId": "download_api_v1_exports__export_id__download_get",
+        "parameters": [
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Export Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "summary": "Events",
+        "operationId": "events_api_v1_events_get",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CommitRequest": {
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Tab Id"
+          },
+          "lease_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Id"
+          },
+          "lease_generation": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Generation"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Revision"
+          },
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Operation Id"
+          },
+          "confirm_empty": {
+            "type": "boolean",
+            "title": "Confirm Empty",
+            "default": false
+          },
+          "confirm_monotonic": {
+            "type": "boolean",
+            "title": "Confirm Monotonic",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tab_id",
+          "lease_id",
+          "lease_generation",
+          "base_revision",
+          "operation_id"
+        ],
+        "title": "CommitRequest",
+        "description": "Explicit acknowledgements distinguish warnings from hard validation."
+      },
+      "DimensionsView": {
+        "properties": {
+          "HR": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Hr"
+          },
+          "LR2": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Lr2"
+          },
+          "LR3": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Lr3"
+          },
+          "LR4": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Lr4"
+          }
+        },
+        "type": "object",
+        "required": [
+          "HR",
+          "LR2",
+          "LR3",
+          "LR4"
+        ],
+        "title": "DimensionsView",
+        "description": "Actual image dimensions used for coordinate projection."
+      },
+      "DownloadProgress": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "component": {
+            "type": "string",
+            "title": "Component"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "file_index": {
+            "type": "integer",
+            "title": "File Index"
+          },
+          "files_total": {
+            "type": "integer",
+            "title": "Files Total"
+          },
+          "bytes_received": {
+            "type": "integer",
+            "title": "Bytes Received"
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bytes"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id",
+          "component",
+          "filename",
+          "file_index",
+          "files_total",
+          "bytes_received",
+          "total_bytes",
+          "attempt",
+          "stage"
+        ],
+        "title": "DownloadProgress",
+        "description": "Public transfer progress, without private filesystem paths or URLs."
+      },
+      "DraftRequest": {
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Tab Id"
+          },
+          "lease_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Id"
+          },
+          "lease_generation": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Generation"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Revision"
+          },
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Operation Id"
+          },
+          "hr": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "title": "Hr"
+          },
+          "recoverability": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Recoverability"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tab_id",
+          "lease_id",
+          "lease_generation",
+          "base_revision",
+          "operation_id",
+          "hr"
+        ],
+        "title": "DraftRequest",
+        "description": "HR geometry/text and per-variant recoverability are the writable data."
+      },
+      "Exchange": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 20,
+            "title": "Token"
+          },
+          "nickname": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Nickname",
+            "default": "访客"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "Exchange",
+        "description": "Capability exchange; tokens are never placed in query strings."
+      },
+      "ExportRequest": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset"
+        ],
+        "title": "ExportRequest",
+        "description": "Freeze currently confirmed results for one dataset."
+      },
+      "GroupView": {
+        "properties": {
+          "HR": {
+            "items": {
+              "$ref": "#/components/schemas/RegionView"
+            },
+            "type": "array",
+            "title": "Hr"
+          },
+          "LR2": {
+            "items": {
+              "$ref": "#/components/schemas/RegionView"
+            },
+            "type": "array",
+            "title": "Lr2"
+          },
+          "LR3": {
+            "items": {
+              "$ref": "#/components/schemas/RegionView"
+            },
+            "type": "array",
+            "title": "Lr3"
+          },
+          "LR4": {
+            "items": {
+              "$ref": "#/components/schemas/RegionView"
+            },
+            "type": "array",
+            "title": "Lr4"
+          }
+        },
+        "type": "object",
+        "required": [
+          "HR",
+          "LR2",
+          "LR3",
+          "LR4"
+        ],
+        "title": "GroupView",
+        "description": "One transaction's synchronized four-variant annotation group."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InferenceRequest": {
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Tab Id"
+          },
+          "lease_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Id"
+          },
+          "lease_generation": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Generation"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Revision"
+          },
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Operation Id"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "sample": {
+            "type": "string",
+            "title": "Sample"
+          },
+          "image_version": {
+            "type": "string",
+            "title": "Image Version"
+          },
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "slot_generation": {
+            "type": "integer",
+            "title": "Slot Generation"
+          },
+          "region_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "title": "Region Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tab_id",
+          "lease_id",
+          "lease_generation",
+          "base_revision",
+          "operation_id",
+          "dataset",
+          "sample",
+          "image_version",
+          "model_id",
+          "model_version",
+          "slot_generation"
+        ],
+        "title": "InferenceRequest",
+        "description": "An inference request is pinned to source, model and annotation versions."
+      },
+      "JobView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "sample": {
+            "type": "string",
+            "title": "Sample"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "updated": {
+            "type": "number",
+            "title": "Updated"
+          },
+          "timings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Timings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "dataset",
+          "sample",
+          "state",
+          "error",
+          "created",
+          "updated"
+        ],
+        "title": "JobView",
+        "description": "Session-scoped task state and optional measured pipeline stages."
+      },
+      "JsonValue": {},
+      "LeaseRequest": {
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Tab Id"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tab_id"
+        ],
+        "title": "LeaseRequest",
+        "description": "Bind editing ownership to a fresh browser-tab identifier."
+      },
+      "MissingValue": {
+        "properties": {
+          "variant": {
+            "type": "string",
+            "enum": [
+              "HR",
+              "LR2",
+              "LR3",
+              "LR4"
+            ],
+            "title": "Variant"
+          },
+          "region_id": {
+            "type": "string",
+            "title": "Region Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant",
+          "region_id"
+        ],
+        "title": "MissingValue",
+        "description": "Locate the evidence entry that prevents a formal commit."
+      },
+      "ModelView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "attribute": {
+            "type": "string",
+            "title": "Attribute"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "downloadable": {
+            "type": "boolean",
+            "title": "Downloadable"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "required_memory_mb": {
+            "type": "integer",
+            "title": "Required Memory Mb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "attribute",
+          "version",
+          "available",
+          "downloadable",
+          "errors",
+          "required_memory_mb"
+        ],
+        "title": "ModelView",
+        "description": "Distinguish installed models from supported automatic downloads."
+      },
+      "OccupancyView": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "title": "Nickname"
+          },
+          "expires": {
+            "type": "number",
+            "title": "Expires"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname",
+          "expires"
+        ],
+        "title": "OccupancyView",
+        "description": "Public lease status without writable lease credentials."
+      },
+      "RegionView": {
+        "properties": {
+          "region_id": {
+            "type": "string",
+            "title": "Region Id"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "text",
+              "face"
+            ],
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "shape_type": {
+            "type": "string",
+            "enum": [
+              "rectangle",
+              "quadrilateral"
+            ],
+            "title": "Shape Type"
+          },
+          "points": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "recoverable": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recoverable"
+          }
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/JsonValue"
+        },
+        "type": "object",
+        "required": [
+          "region_id",
+          "label",
+          "description",
+          "shape_type",
+          "points",
+          "recoverable"
+        ],
+        "title": "RegionView",
+        "description": "Canonical region with lossless compatibility extension fields."
+      },
+      "SampleView": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "attribute": {
+            "type": "string",
+            "enum": [
+              "text",
+              "face"
+            ],
+            "title": "Attribute"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "committed_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Revision"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/GroupView"
+          },
+          "formal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/DimensionsView"
+          },
+          "image_version": {
+            "type": "string",
+            "title": "Image Version"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationView"
+          },
+          "occupancy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OccupancyView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "id",
+          "attribute",
+          "revision",
+          "committed_revision",
+          "draft",
+          "formal",
+          "complete",
+          "dimensions",
+          "image_version",
+          "validation"
+        ],
+        "title": "SampleView",
+        "description": "Public saved state; private source paths never cross this interface."
+      },
+      "SessionView": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "edit",
+              "view"
+            ],
+            "title": "Role"
+          },
+          "nickname": {
+            "type": "string",
+            "title": "Nickname"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample"
+          },
+          "lease_seconds": {
+            "type": "integer",
+            "title": "Lease Seconds"
+          },
+          "heartbeat_seconds": {
+            "type": "integer",
+            "title": "Heartbeat Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "role",
+          "nickname",
+          "dataset",
+          "sample",
+          "lease_seconds",
+          "heartbeat_seconds"
+        ],
+        "title": "SessionView",
+        "description": "Effective current permission and timing values."
+      },
+      "ShareRequest": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "view"
+            ],
+            "title": "Role"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample"
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "dataset"
+        ],
+        "title": "ShareRequest",
+        "description": "Owner-defined authorization scope independent of the current page."
+      },
+      "SlotRequest": {
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Generation"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "default": "auto"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "generation"
+        ],
+        "title": "SlotRequest",
+        "description": "Compare-and-swap control for the service-wide model slot."
+      },
+      "SlotView": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "generation": {
+            "type": "integer",
+            "title": "Generation"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "running_job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Job"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "download": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DownloadProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "generation",
+          "model_id",
+          "model_version",
+          "device",
+          "queued",
+          "error",
+          "running_job",
+          "providers"
+        ],
+        "title": "SlotView",
+        "description": "Observable shared model slot; requests use generation as a fence."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValidationView": {
+        "properties": {
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/MissingValue"
+            },
+            "type": "array",
+            "title": "Missing"
+          },
+          "violations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Violations"
+          },
+          "empty": {
+            "type": "boolean",
+            "title": "Empty"
+          }
+        },
+        "type": "object",
+        "required": [
+          "missing",
+          "violations",
+          "empty"
+        ],
+        "title": "ValidationView",
+        "description": "Hard completeness failures and advisory monotonicity findings."
+      }
+    }
+  }
+}

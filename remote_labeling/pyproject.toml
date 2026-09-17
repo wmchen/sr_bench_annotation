@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "realisr-remote"
+version = "0.1.0"
+description = "Standalone Real-ISR browser annotation"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "pydantic>=2.10,<3",
+  "PyYAML>=6,<7", "Pillow>=10,<13", "psutil>=7,<8",
+]
+
+[project.optional-dependencies]
+cpu = ["onnxruntime>=1.20,<1.27", "numpy>=2,<3", "opencv-contrib-python-headless>=4.7", "shapely>=2,<3", "pyclipper>=1.3", "six>=1.16"]
+gpu = ["onnxruntime-gpu==1.26.0", "nvidia-ml-py>=12,<14", "numpy>=2,<3", "opencv-contrib-python-headless>=4.7", "shapely>=2,<3", "pyclipper>=1.3", "six>=1.16"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<0.29", "build", "black"]
+
+[project.scripts]
+realisr-remote = "remote_labeling.backend.cli:main"
+
+[tool.setuptools]
+include-package-data = false
+package-dir = {remote_labeling = "."}
+packages = ["remote_labeling", "remote_labeling.backend", "remote_labeling.backend.api", "remote_labeling.backend.application", "remote_labeling.backend.domain", "remote_labeling.backend.infrastructure", "remote_labeling.backend.infrastructure.datasets", "remote_labeling.backend.infrastructure.inference", "remote_labeling.backend.infrastructure.inference.vendor", "remote_labeling.backend.infrastructure.persistence", "remote_labeling.backend.ports"]
+
+[tool.setuptools.package-data]
+"remote_labeling" = ["frontend/dist/*", "frontend/dist/assets/*"]
+"remote_labeling.backend" = ["infrastructure/persistence/*.sql", "infrastructure/inference/assets/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["gpu: requires registered real weights and GPU", "performance: explicit load benchmark", "desktop: optional desktop compatibility"]
+
+[tool.black]
+line-length = 79
+target-version = ["py311"]
+extend-exclude = "vendor/"

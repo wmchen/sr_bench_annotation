@@ -1,0 +1,9 @@
+include README.md MIGRATION.md ACCEPTANCE.md LICENSE config.example.yaml openapi.json requirements.txt
+recursive-include backend *.py *.sql *.txt
+recursive-include frontend *.ts *.tsx *.mjs *.css *.html *.json
+recursive-include tests *.py *.ts *.json
+recursive-include reports *.json *.png
+prune frontend/node_modules
+prune frontend/test-results
+prune frontend/playwright-report
+global-exclude *.pyc *.pyo

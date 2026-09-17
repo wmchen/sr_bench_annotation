@@ -1,0 +1,47 @@
+host: 127.0.0.1
+port: 8765
+public_origin: http://127.0.0.1:8765
+# 状态目录由部署者选择；允许持久网络目录，不再检查文件系统类型。
+state_dir: /var/lib/realisr-remote
+# 网络目录使用 DELETE；已验证的本地文件系统可使用 WAL。
+sqlite_journal_mode: DELETE
+export_dir: /var/lib/realisr-remote-exports
+cache_dir: /var/cache/realisr-remote
+datasets:
+  text:
+    root: /picassox/intelligent-cpfs/graphic-image/cwm/sr_bench/data/text
+    attribute: text
+  face:
+    root: /picassox/intelligent-cpfs/graphic-image/cwm/sr_bench/data/face
+    attribute: face
+# 不需要填写内置模型的权重或字典路径。首次点击“下载并加载”时自动准备。
+# 省略 models 也会启用这两套模型；models: {} 可关闭模型功能。
+models:
+  ppocr-v6-medium:
+    kind: ppocr_v6
+    attribute: text
+    preset: ppocr-v6-medium
+  scrfd:
+    kind: scrfd
+    attribute: face
+    preset: scrfd
+    required_memory_mb: 2048
+# 下载源 github / modelscope；不填写时使用 XANYLABELING_MODEL_HUB 或 github。
+# model_hub: github
+# download_timeout_seconds: 30
+# download_retries: 3
+# 模型下载代理；省略或 null 时沿用 http_proxy / https_proxy 环境变量。
+# 配置后仅使用这里列出的代理，未列出的协议直连；{} 表示全部直连。
+# 支持带用户名/密码的 URL；实际凭据请填写在部署配置中。
+# download_proxies:
+#   http: "YOUR_PROXY_ADDRESS"
+#   https: "YOUR_PROXY_ADDRESS"
+# 空列表表示当前进程可见 GPU；可填 UUID 限定范围。余量须经实测调整。
+allowed_gpus: []
+gpu_margin_mb: 1024
+cpu_threads: 4
+queue_limit: 10
+load_timeout_seconds: 180
+lease_seconds: 90
+heartbeat_seconds: 20
+session_seconds: 43200

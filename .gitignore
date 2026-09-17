@@ -183,3 +183,6 @@ pnnx*
 
 # calibration image
 calibration_*.npy
+
+# remote labeling
+state/
