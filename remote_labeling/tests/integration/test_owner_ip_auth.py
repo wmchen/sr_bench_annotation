@@ -367,7 +367,7 @@ def test_v1_migration_preserves_shares_and_invalidates_owners(
     store.initialize()
     store.initialize()
     with store.read() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
         assert [row["id"] for row in db.execute("SELECT * FROM sessions")] == [
             "view"
         ]

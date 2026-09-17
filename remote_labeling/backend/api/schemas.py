@@ -59,6 +59,13 @@ class CommitRequest(WriteRequest):
     confirm_monotonic: bool = False
 
 
+class SaveAnnotationsRequest(CommitRequest):
+    """Fence publication against both the online draft and source files."""
+
+    source_token: str = Field(min_length=64, max_length=64)
+    image_version: str = Field(min_length=64, max_length=64)
+
+
 class ShareRequest(RequestModel):
     """Owner-defined authorization scope independent of the current page."""
 
@@ -170,6 +177,11 @@ class SampleView(BaseModel):
     image_version: str
     validation: ValidationView
     occupancy: OccupancyView | None = None
+    source_group: GroupView | None = None
+    source_token: str = ""
+    source_ready: bool = False
+    source_dirty: bool = True
+    source_error: str | None = None
 
 
 class SessionView(BaseModel):

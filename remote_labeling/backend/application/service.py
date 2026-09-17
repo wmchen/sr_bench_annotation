@@ -16,6 +16,7 @@ from ..domain.opening import has_pending_draft, opening_selection
 from ..domain.rules import DomainError, completion, edit_group
 from ..infrastructure.datasets.source import contained, scan_dataset
 from ..ports import Store
+from .writeback import WritebackService
 
 
 def encode(value: Any) -> str:
@@ -64,6 +65,7 @@ class AnnotationService:
     def __init__(self, settings: Settings, store: Store) -> None:
         self.settings = settings
         self.store = store
+        self.writeback = WritebackService(self)
 
     def initialize_owner(self) -> str | None:
         """Create a separate owner credential exactly once."""
@@ -318,6 +320,7 @@ class AnnotationService:
             raise DomainError("dataset", "未登记的数据集", 404)
         with self.store.transaction() as db:
             self.auth(db, session, owner=True)
+            self.writeback.guard(db, dataset)
             current = db.execute(
                 "SELECT status FROM datasets WHERE id=?", (dataset,)
             ).fetchone()
@@ -351,8 +354,11 @@ class AnnotationService:
         config = self.settings.datasets.get(dataset)
         if config is None:
             raise DomainError("dataset", "未登记的数据集", 404)
+        with self.store.read() as db:
+            self.writeback.guard(db, dataset)
         report = scan_dataset(config.root, config.attribute)
         with self.store.transaction() as db:
+            self.writeback.guard(db, dataset)
             existing = db.execute(
                 "SELECT * FROM datasets WHERE id=?", (dataset,)
             ).fetchone()
@@ -606,12 +612,14 @@ class AnnotationService:
             "dimensions": json.loads(row["dimensions"]),
             "image_version": row["image_version"],
             "validation": completion(draft),
+            **self.writeback.state(row),
         }
 
     def get_sample(self, session: str, dataset: str, sample: str) -> dict:
         """Read current saved versions and an advisory occupancy summary."""
-        with self.store.read() as db:
+        with self.writeback.lock(dataset), self.store.read() as db:
             self.auth(db, session, dataset, sample)
+            self.writeback.guard(db, dataset)
             value = self.view(self.sample_row(db, dataset, sample))
             lease = db.execute(
                 "SELECT l.expires,s.nickname FROM leases l JOIN sessions s ON s.id=l.session WHERE l.dataset=? AND l.sample=? AND l.expires>?",
@@ -711,6 +719,7 @@ class AnnotationService:
         self, db: Any, session: str, dataset: str, sample: str, request: dict
     ) -> Any:
         """Fence old leases and stale revisions before any new write."""
+        self.writeback.guard(db, dataset)
         row = self.sample_row(db, dataset, sample, editable=True)
         lease = db.execute(
             "SELECT * FROM leases WHERE dataset=? AND sample=?",

@@ -98,6 +98,13 @@ def import_group(
                 ),
             }
             raise
+        # Schema 3 explicitly represents unfinished HR evidence as null.
+        if (
+            hr_version == 3
+            and "recoverable" in source
+            and source["recoverable"] is None
+        ):
+            record["recoverable"] = None
         rid = record.get("region_id")
         if not rid:
             rid = new_region_id(sample, used)

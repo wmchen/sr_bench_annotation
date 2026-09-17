@@ -1,7 +1,7 @@
 import type { components } from "./generated";
 
 export type DraftRequest = components["schemas"]["DraftRequest"];
-export type CommitRequest = components["schemas"]["CommitRequest"];
+export type SaveAnnotationsRequest = components["schemas"]["SaveAnnotationsRequest"];
 export type InferenceRequest = components["schemas"]["InferenceRequest"];
 export const variants = ["HR", "LR2", "LR3", "LR4"] as const;
 export type Variant = typeof variants[number];

@@ -39,7 +39,7 @@ class SQLiteStore:
                     503,
                 )
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise DomainError("schema", "不支持的数据库版本")
             if not version:
                 db.executescript(
@@ -48,6 +48,11 @@ class SQLiteStore:
             if version < 2:
                 db.executescript(
                     Path(__file__).with_name("002.sql").read_text()
+                )
+
+            if version < 3:
+                db.executescript(
+                    Path(__file__).with_name("003.sql").read_text()
                 )
 
     def connect(self) -> sqlite3.Connection:
@@ -130,6 +135,24 @@ class SQLiteStore:
         target = sqlite3.connect(destination)
         try:
             source.backup(target)
+            # Reject snapshots captured midway through a multi-file publication:
+            # restoring them later must not roll back newer source annotations.
+            table = target.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='writebacks'"
+            ).fetchone()
+            if (
+                table
+                and target.execute(
+                    "SELECT 1 FROM writebacks WHERE state='prepared'"
+                ).fetchone()
+            ):
+                target.close()
+                destination.unlink()
+                raise DomainError(
+                    "writeback_pending",
+                    "标注正在写回或等待恢复，请完成后重新备份",
+                    409,
+                )
         finally:
             target.close()
             source.close()

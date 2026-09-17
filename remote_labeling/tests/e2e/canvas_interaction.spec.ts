@@ -87,7 +87,7 @@ test("rectangle selection, edge resizing, live corners, view mode and forced pan
   await page.screenshot({path:testInfo.outputPath("rectangle-live-resize.png")});
   await page.mouse.up();
   await hover(page,canvas,left,top+20,"nwse-resize");
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const current = async () => (await (await page.request.get("/api/v1/datasets/text/samples/"+sample)).json()).draft;
   const resized = await current();
   const scale=Math.min(box.width/800,box.height/600)*.94;
@@ -113,7 +113,7 @@ test("rectangle selection, edge resizing, live corners, view mode and forced pan
   await page.mouse.move(cx+25,cy+15,{steps:4}); await page.mouse.up();
   await page.keyboard.up("Space");
   await expect.poll(background).not.toEqual(beforePan);
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   expect((await current()).HR[0].points).toEqual(resized.HR[0].points);
   await canvas.locator("..").getByRole("button", {name:"适应",exact:true}).click();
   // Viewing an existing shape only selects, even when dragged or right-clicked.
@@ -176,12 +176,12 @@ test("quadrilateral handles, drawing toggle, forced pan during drawing and cance
   await page.screenshot({path:testInfo.outputPath("quadrilateral-live-resize.png")});
   await page.mouse.up();
   await hover(page,canvas,left+20,top+15,"pointer");
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const current=async () => (await (await page.request.get("/api/v1/datasets/text/samples/"+sample)).json()).draft.HR[0];
   const before = await current();
   await hover(page,canvas,cx,bottom,"move");
   await page.mouse.down(); await page.mouse.move(cx+10,bottom+10,{steps:3}); await page.mouse.up();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const moved = await current();
   for (let i=0;i<4;i++) {
     expect(moved.points[i][0]-before.points[i][0]).toBeCloseTo(moved.points[0][0]-before.points[0][0],5);

@@ -129,6 +129,7 @@ def main() -> None:
         store.acquire_instance()
         try:
             store.initialize()
+            service.writeback.recover()
             if args.command == "restore":
                 with store.transaction() as db:
                     db.execute("DELETE FROM leases")

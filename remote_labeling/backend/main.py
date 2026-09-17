@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .api.schemas import (
     CommitRequest,
+    SaveAnnotationsRequest,
     DraftRequest,
     Exchange,
     ExportRequest,
@@ -58,6 +59,7 @@ def create_app(settings: Settings) -> FastAPI:
         inference = exports = None
         try:
             await run_in_threadpool(store.initialize)
+            await run_in_threadpool(service.writeback.recover)
             await run_in_threadpool(service.sync_owner_credential)
             settings.cache_dir.mkdir(parents=True, exist_ok=True)
             with store.transaction() as db:
@@ -366,8 +368,19 @@ def create_app(settings: Settings) -> FastAPI:
     def commit(
         request: Request, dataset: str, sample: str, body: CommitRequest
     ) -> dict:
-        return service.save(
-            session(request), dataset, sample, body.model_dump(), commit=True
+        raise DomainError(
+            "client_upgrade", "保存方式已升级，请刷新页面后使用保存标注", 410
+        )
+
+    @app.post(sample_path + "/save-annotations", response_model=SampleView)
+    def save_annotations(
+        request: Request,
+        dataset: str,
+        sample: str,
+        body: SaveAnnotationsRequest,
+    ) -> dict:
+        return service.writeback.save(
+            session(request), dataset, sample, body.model_dump()
         )
 
     @app.get(prefix + "/shares")

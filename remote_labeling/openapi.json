@@ -685,6 +685,64 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset}/samples/{sample}/save-annotations": {
+      "post": {
+        "summary": "Save Annotations",
+        "operationId": "save_annotations_api_v1_datasets__dataset__samples__sample__save_annotations_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sample"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAnnotationsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/shares": {
       "get": {
         "summary": "Shares",
@@ -1995,6 +2053,42 @@
                 "type": "null"
               }
             ]
+          },
+          "source_group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_token": {
+            "type": "string",
+            "title": "Source Token",
+            "default": ""
+          },
+          "source_ready": {
+            "type": "boolean",
+            "title": "Source Ready",
+            "default": false
+          },
+          "source_dirty": {
+            "type": "boolean",
+            "title": "Source Dirty",
+            "default": true
+          },
+          "source_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Error"
           }
         },
         "type": "object",
@@ -2013,6 +2107,74 @@
         ],
         "title": "SampleView",
         "description": "Public saved state; private source paths never cross this interface."
+      },
+      "SaveAnnotationsRequest": {
+        "properties": {
+          "tab_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Tab Id"
+          },
+          "lease_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Id"
+          },
+          "lease_generation": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Lease Generation"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Revision"
+          },
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Operation Id"
+          },
+          "confirm_empty": {
+            "type": "boolean",
+            "title": "Confirm Empty",
+            "default": false
+          },
+          "confirm_monotonic": {
+            "type": "boolean",
+            "title": "Confirm Monotonic",
+            "default": false
+          },
+          "source_token": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Source Token"
+          },
+          "image_version": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Image Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tab_id",
+          "lease_id",
+          "lease_generation",
+          "base_revision",
+          "operation_id",
+          "source_token",
+          "image_version"
+        ],
+        "title": "SaveAnnotationsRequest",
+        "description": "Fence publication against both the online draft and source files."
       },
       "SessionView": {
         "properties": {

@@ -14,6 +14,7 @@ from pathlib import Path
 from .service import AnnotationService, encode, event
 from ..domain.rules import DomainError, VARIANTS, metadata
 from ..infrastructure.datasets.source import contained
+from ..infrastructure.datasets.documents import document, json_text
 
 
 class ExportService:
@@ -80,7 +81,7 @@ class ExportService:
             for variant in VARIANTS:
                 (output / variant).mkdir(parents=True)
             (output / "RealISRMeta.json").write_text(
-                encode(metadata(manifest["attribute"])), encoding="utf-8"
+                json_text(metadata(manifest["attribute"])), encoding="utf-8"
             )
             listing = []
             for sample in manifest["samples"]:
@@ -91,30 +92,22 @@ class ExportService:
                     }
                 )
                 for variant in VARIANTS:
-                    width, height = sample["dimensions"][variant]
-                    document = {
-                        "version": "realisr-remote-0.1.0",
-                        "flags": {},
-                        "checked": True,
-                        "shapes": sample["group"][variant],
-                        "imagePath": sample["sample"],
-                        "imageData": None,
-                        "imageHeight": height,
-                        "imageWidth": width,
-                        "realisr": {
-                            "schema_version": 3,
-                            "attribute": manifest["attribute"],
-                            "variant": variant,
-                            "master": "HR",
-                        },
-                    }
+                    payload = document(
+                        sample["sample"],
+                        variant,
+                        sample["group"],
+                        sample["dimensions"],
+                        manifest["attribute"],
+                    )
                     (
                         output
                         / variant
                         / (Path(sample["sample"]).stem + ".json")
-                    ).write_text(encode(document), encoding="utf-8")
+                    ).write_text(json_text(payload), encoding="utf-8")
             (staging / "manifest.json").write_text(
-                encode({"dataset": manifest["dataset"], "samples": listing}),
+                json_text(
+                    {"dataset": manifest["dataset"], "samples": listing}
+                ),
                 encoding="utf-8",
             )
             with zipfile.ZipFile(

@@ -1,20 +1,21 @@
 import { uuid } from "./state/id";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, ApiError, samplePath, variants, type DraftRequest, type CommitRequest, type InferenceRequest, type Dataset, type Group, type Job,
+  api, ApiError, samplePath, variants, type DraftRequest, type SaveAnnotationsRequest, type InferenceRequest, type Dataset, type Group, type Job,
   type Lease, type ModelInfo, type Sample, type SampleItem, type Session,
   type Slot, type Variant, type OpeningSelection,
 } from "./api/client";
 import { convert, evidence, recoverability, syncHR, typing } from "./state/domain";
 import { recovery, type Recovery } from "./state/recovery";
 import { ImageCache } from "./state/imageCache";
+import { needsWriteback } from "./features/workspace/sourceSync";
 import { SaveQueue, type SaveStatus } from "./state/saveQueue";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
 import { InferencePanel } from "./features/inference/InferencePanel";
 import { SharingPanel } from "./features/sharing/SharingPanel";
 
 const emptyGroup = (): Group => ({HR:[],LR2:[],LR3:[],LR4:[]});
-const statusText = {saved:"已保存",pending:"待保存",saving:"保存中…",failed:"保存失败"};
+const statusText = {saved:"草稿已自动保存",pending:"草稿待自动保存",saving:"草稿自动保存中…",failed:"草稿自动保存失败"};
 
 export function App() {
   const [user,setUser] = useState<Session | null>(null);
@@ -57,6 +58,12 @@ export function App() {
   const [conversion,setConversion] = useState(false);
   const [corner,setCorner] = useState(0);
   const [clockwise,setClockwise] = useState(true);
+  const [sourceConflict,setSourceConflict] = useState<string | null>(null);
+  const [publicationUncertain,setPublicationUncertain] = useState(false);
+  const publication = useRef<{path:string;body:SaveAnnotationsRequest} | null>(null);
+  const publishing = useRef(false);
+  const lastSaveFailed = useRef(false);
+  const sourceBaseline = useRef("");
   const tab = useRef(uuid());
   const queue = useRef<SaveQueue | null>(null);
   const cache = useRef(new ImageCache());
@@ -70,7 +77,9 @@ export function App() {
 
   function setSample(value: Sample | null) {
     const old=sampleRef.current;
-    if(!value || !old || old.dataset!==value.dataset || old.id!==value.id || old.image_version!==value.image_version)setImages({});
+    if(!value || !old || old.dataset!==value.dataset || old.id!==value.id || old.image_version!==value.image_version){
+      setImages({});sourceBaseline.current=value?.source_token??"";setSourceConflict(null);
+    }
     sampleRef.current=value;setSampleState(value);
   }
   function setGroup(value: Group) { groupRef.current=value;setGroupState(value); }
@@ -201,6 +210,7 @@ export function App() {
     );
   }
   async function release() {
+    if(publication.current)throw new Error("请先重试保存标注，确认上次写回结果后再离开。");
     if(releasing.current)return releasing.current;
     const current=sampleRef.current,currentLease=leaseRef.current,currentQueue=queue.current;
     if(!currentLease || !current)return;
@@ -233,7 +243,8 @@ export function App() {
     const local=await recovery(recoveryKey(result)).catch(()=>undefined);
     if(request!==navigation.current)return;
     window.history.replaceState(null,"",location.pathname+"?dataset="+encodeURIComponent(result.dataset)+"&sample="+encodeURIComponent(result.id));
-    const showDraft=preferDraft || result.formal===null;
+    const showDraft=preferDraft || result.source_dirty || result.formal===null;
+    sourceBaseline.current=result.source_token;
     setSample(result);setGroup(showDraft?result.draft:result.formal!);
     setSavedDraft(showDraft);setSelected([]);setMode("select");setActive("HR");
     setStatus("saved");
@@ -307,7 +318,7 @@ export function App() {
   },[lease?.id,sample?.id,user]);
   useEffect(()=>{
     const prevent=(event:BeforeUnloadEvent)=>{
-      if(queue.current && queue.current.sequence!==queue.current.acknowledged){event.preventDefault();event.returnValue="";}
+      if(publication.current || (queue.current && queue.current.sequence!==queue.current.acknowledged)){event.preventDefault();event.returnValue="";}
     };
     window.addEventListener("beforeunload",prevent);
     return()=>window.removeEventListener("beforeunload",prevent);
@@ -331,6 +342,7 @@ export function App() {
         if(current){
           const latest=await api<Sample>(samplePath(current.dataset,current.id));
           if(cancelled || request!==navigation.current || sampleRef.current?.id!==current.id || sampleRef.current?.dataset!==current.dataset)return;
+          if(publishing.current || publication.current)return;
           if(latest.revision!==current.revision || latest.image_version!==current.image_version){
             const q=queue.current;
             if(q && q.sequence!==q.acknowledged){
@@ -341,7 +353,7 @@ export function App() {
               setGroup(leaseRef.current || savedDraft ? latest.draft : latest.formal ?? latest.draft);
               if(leaseRef.current)installQueue(latest,leaseRef.current);
             }
-          }else if(!leaseRef.current)setSample(latest);
+          }else setSample(latest);
         }
       }catch(value){if(!cancelled)onError(value);}finally{busy=false;if(queuedSync){queuedSync=false;void sync();}}
     }
@@ -355,9 +367,13 @@ export function App() {
     return()=>{cancelled=true;stream.close();clearInterval(poll);};
   },[user,savedDraft]);
 
-  const editable=!!lease && leaseHealthy && !working && opening!=="loading" && variants.every(v=>!!images[v]);
+  const editable=!!lease && leaseHealthy && !publicationUncertain && !working && opening!=="loading" && variants.every(v=>!!images[v]);
+  const sourceDirty=!!sample && needsWriteback(sample,lease?group:sample.draft);
+  const canSave=!!sample && user?.role!=="view" && currentDatasetReady() && !working && opening!=="loading" &&
+    (!!publication.current || (sourceDirty && !!sample.source_token && (!lease || leaseHealthy) && (!sample.occupancy || !!lease)));
+  function currentDatasetReady(){return datasets.find(d=>d.id===dataset)?.status==="ready";}
   function change(next:Group,recordHistory=true) {
-    if(!leaseRef.current || !leaseHealthy)return;
+    if(!leaseRef.current || !leaseHealthy || publishing.current || publication.current)return;
     if(performance.now()>=renewalDeadline.current){setLeaseHealthy(false);setError("编辑租约需重新确认，当前操作未应用");return;}
     if(recordHistory){
       history.current.past.push(structuredClone(groupRef.current));
@@ -383,7 +399,7 @@ export function App() {
     const key=(event:KeyboardEvent)=>{
       if(typing(event.target))return;
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();undo(event.shiftKey);}
-      else if((event.ctrlKey||event.metaKey)&&event.key==="s"){event.preventDefault();void queue.current?.flush().catch(onError);}
+      else if((event.ctrlKey||event.metaKey)&&event.key==="s"){event.preventDefault();if(canSave)void run(()=>saveAnnotations());}
       else if(["0","1","2"].includes(event.key)){event.preventDefault();setEvidence(Number(event.key));}
       else if(["Delete","Backspace"].includes(event.key) && editable){event.preventDefault();remove();}
       else if(event.key.toLowerCase()==="f")setFocus(f=>f+1);
@@ -393,30 +409,64 @@ export function App() {
     };
     window.addEventListener("keydown",key);
     return()=>window.removeEventListener("keydown",key);
-  },[group,selected,active,editable,sample]);
-  async function commit() {
-    if(!sample || !leaseRef.current)return;
-    await queue.current?.flush();
-    const current=sampleRef.current!;
-    const values=variants.map(v=>groupRef.current[v]);
-    const missing=values.flat().some(r=>r.recoverable==null);
-    if(missing)throw new Error("仍有未设置的可恢复度，请补齐四倍率后确认。");
-    const empty=!groupRef.current.HR.length;
-    if(empty && !window.confirm("确认此组没有需要标注的文本或人脸？"))return;
-    const violations=groupRef.current.HR.some((_,i)=>{
-      const v=values.map(rows=>rows[i].recoverable!);
-      return v.some((n,j)=>j>0 && n<v[j-1]);
-    });
-    if(violations && !window.confirm("可恢复度不满足 HR ≤ LR2 ≤ LR3 ≤ LR4。确认继续提交？"))return;
-    const operation=uuid();
-    const result=await api<Sample>(samplePath(current.dataset,current.id)+"/commit","POST",{
-      tab_id:tab.current,lease_id:leaseRef.current.id,lease_generation:leaseRef.current.generation,
-      base_revision:queue.current!.revision,operation_id:operation,confirm_empty:empty,confirm_monotonic:violations,
-    } satisfies CommitRequest);
-    setSample(result);setGroup(result.draft);installQueue(result,leaseRef.current);
-    await recovery(recoveryKey(result),null);
-    await refreshLists();
-    await navigate(1,true);
+  },[group,selected,active,editable,sample,canSave]);
+  async function reloadSource() {
+    if(!sampleRef.current)return;
+    const latest=await api<Sample>(samplePath(sampleRef.current.dataset,sampleRef.current.id));
+    sourceBaseline.current=latest.source_token;setSample(latest);setSourceConflict(null);
+    if(!leaseRef.current){setGroup(latest.draft);setSavedDraft(true);}
+  }
+  async function saveAnnotations(overrideToken?:string) {
+    if(publishing.current || !sampleRef.current || user?.role==="view")return;
+    publishing.current=true;lastSaveFailed.current=true;
+    let temporary:Lease | null=null;
+    const current=sampleRef.current;
+    const path=samplePath(current.dataset,current.id);
+    let result:Sample | null=null;
+    try {
+      if(!publication.current){
+        await queue.current?.flush();
+        const latest=sampleRef.current!;
+        if(!needsWriteback(latest,leaseRef.current?groupRef.current:latest.draft))return;
+        if(!leaseRef.current){setGroup(latest.draft);setSavedDraft(true);}
+        const draft=latest.draft;
+        const empty=!draft.HR.length;
+        if(empty && !window.confirm("确认此组没有需要标注的文本或人脸？"))return;
+        const violations=latest.validation.violations.length>0;
+        if(violations && !window.confirm("可恢复度不满足 HR ≤ LR2 ≤ LR3 ≤ LR4。确认继续保存？"))return;
+        const activeLease=leaseRef.current ?? (temporary=await api<Lease>(path+"/lease","POST",{tab_id:tab.current}));
+        publication.current={path,body:{
+          tab_id:tab.current,lease_id:activeLease.id,lease_generation:activeLease.generation,
+          base_revision:latest.revision,operation_id:uuid(),image_version:latest.image_version,
+          source_token:overrideToken??sourceBaseline.current,
+          confirm_empty:empty,confirm_monotonic:violations,
+        }};
+      }
+      const pending=publication.current;
+      try {
+        result=await api<Sample>(pending.path+"/save-annotations","POST",pending.body);
+      } catch(value) {
+        // A lost response may already have committed. Replay its exact request.
+        if(value instanceof ApiError){publication.current=null;setPublicationUncertain(false);}
+        else setPublicationUncertain(true);
+        if(value instanceof ApiError && value.code==="annotation_source_changed"){
+          const details=value.details as {source_token?:string}|undefined;
+          setSourceConflict(details?.source_token??"");
+          return;
+        }
+        throw value;
+      }
+      publication.current=null;lastSaveFailed.current=false;setPublicationUncertain(false);setSourceConflict(null);
+      sourceBaseline.current=result.source_token;
+      setSample(result);setGroup(result.draft);setSavedDraft(true);
+      if(leaseRef.current)installQueue(result,leaseRef.current);
+      await recovery(recoveryKey(result),null);
+    } finally {
+      try {
+        if(temporary)await api(path+"/lease","DELETE",{tab_id:tab.current,lease_id:temporary.id});
+      } finally {publishing.current=false;}
+    }
+    if(result){await refreshLists();await navigate(1,true);}
   }
   async function navigate(direction:number,incomplete=false) {
     if(!sample)return;
@@ -470,9 +520,9 @@ export function App() {
       <button title={user.role==="owner"?"退出并取消当前 IP 的免登录绑定":undefined} onClick={()=>void run(async()=>{resetOpening();await release();await api("/session","DELETE");setUser(null);setSample(null);setGroup(emptyGroup());setSelected([]);setLocalRecovery(null);setDatasets([]);cache.current.clear();})}>退出</button></div>
     </header>
     {error && <div className="error-banner" role="alert"><span>{error}</span>
-      <button onClick={()=>void run(async()=>{await queue.current?.flush();})}>重试保存</button>
+      <button onClick={()=>void run(()=>publication.current||lastSaveFailed.current?saveAnnotations():queue.current?.flush()??Promise.resolve())}>重试保存</button>
       <button onClick={downloadLocal}>下载本地内容</button>
-      {sample && <button onClick={()=>{if(window.confirm("重新读取服务器版本？当前本地内容会保留为恢复副本，建议先下载核对。"))void run(async()=>{
+      {sample && <button disabled={publicationUncertain} onClick={()=>{if(window.confirm("重新读取服务器版本？当前本地内容会保留为恢复副本，建议先下载核对。"))void run(async()=>{
         const current=sampleRef.current!;
         const pending={group:groupRef.current,base:queue.current?.revision??current.revision,updated:Date.now()};
         await recovery(recoveryKey(current),pending);
@@ -507,16 +557,24 @@ export function App() {
         {!sample?<div className="empty-state"><h2>{datasetStatus==="scanning"?"正在扫描数据集…":opening==="empty"?"暂无可用样本":opening==="loading"?"正在加载四视图…":"选择一组样本开始"}</h2><p>先查看图像，再申请编辑权。HR 标注会同步到三个 LR 视图。</p></div>:<>
           <div className="sample-toolbar">
             <div><strong>{sample.id}</strong><span className={"save-state "+status}>{lease?statusText[status]:savedDraft?"已保存草稿":"正式结果"}</span>
+              <span>{publicationUncertain?"写回结果待确认":sourceDirty?"标注待写回":"标注已写回"}</span>
               {lease && !leaseHealthy && <span className="error-text">编辑已暂停</span>}
               {!lease && sample.occupancy && <span>{sample.occupancy.nickname} 正在编辑</span>}
             </div>
             <div className="button-row"><button disabled={working} onClick={()=>void run(()=>navigate(-1))}>上一组</button>
               <button disabled={working} onClick={()=>void run(()=>navigate(1))}>下一组</button>
               <button disabled={working} onClick={()=>void run(()=>navigate(1,true))}>下一未完成</button>
-              {user.role!=="view" && (!lease || !leaseHealthy)?<button className="primary" disabled={working || opening==="loading" || currentDataset?.status!=="ready"} onClick={()=>void run(beginEdit)}>开始编辑</button>:null}
-              {lease && <><button disabled={working} onClick={()=>void run(release)}>结束编辑</button><button className="primary" disabled={!editable} onClick={()=>void run(commit)}>确认整组</button></>}
+              {user.role!=="view" && (!lease || !leaseHealthy)?<button className="primary" disabled={working || publicationUncertain || opening==="loading" || currentDataset?.status!=="ready"} onClick={()=>void run(beginEdit)}>开始编辑</button>:null}
+              {lease && <button disabled={working || publicationUncertain} onClick={()=>void run(release)}>结束编辑</button>}
+              <button className="primary" disabled={!canSave} title={user.role==="view"?"只读分享无写入权限":sample.occupancy&&!lease?"样本正在由其他会话编辑":"将当前草稿保存到数据 root"} onClick={()=>void run(()=>saveAnnotations())}>保存标注</button>
             </div>
           </div>
+          {sample.source_error && <div role="alert" className="error-banner">{sample.source_error}</div>}
+          {sourceConflict!==null && <div role="alert" className="recovery-banner">
+            磁盘标注已被修改。重新读取会刷新磁盘状态并保留当前草稿；覆盖会将当前草稿写入磁盘。
+            <button disabled={working} onClick={()=>void run(reloadSource)}>重新读取</button>
+            <button disabled={working || !sourceConflict} onClick={()=>void run(()=>saveAnnotations(sourceConflict))}>用当前草稿覆盖</button>
+          </div>}
           {localRecovery && <div className="recovery-banner">发现本地恢复副本（基础版本 {localRecovery.base}）。
             <button disabled={!editable || localRecovery.base!==sample.revision} onClick={()=>{change(localRecovery.group);setLocalRecovery(null);}}>恢复到当前草稿</button>
             <button onClick={downloadLocal}>下载副本</button>

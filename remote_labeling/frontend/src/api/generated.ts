@@ -201,6 +201,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset}/samples/{sample}/save-annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Annotations */
+        post: operations["save_annotations_api_v1_datasets__dataset__samples__sample__save_annotations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shares": {
         parameters: {
             query?: never;
@@ -740,6 +757,54 @@ export interface components {
             image_version: string;
             validation: components["schemas"]["ValidationView"];
             occupancy?: components["schemas"]["OccupancyView"] | null;
+            source_group?: components["schemas"]["GroupView"] | null;
+            /**
+             * Source Token
+             * @default
+             */
+            source_token: string;
+            /**
+             * Source Ready
+             * @default false
+             */
+            source_ready: boolean;
+            /**
+             * Source Dirty
+             * @default true
+             */
+            source_dirty: boolean;
+            /** Source Error */
+            source_error?: string | null;
+        };
+        /**
+         * SaveAnnotationsRequest
+         * @description Fence publication against both the online draft and source files.
+         */
+        SaveAnnotationsRequest: {
+            /** Tab Id */
+            tab_id: string;
+            /** Lease Id */
+            lease_id: string;
+            /** Lease Generation */
+            lease_generation: string;
+            /** Base Revision */
+            base_revision: number;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Confirm Empty
+             * @default false
+             */
+            confirm_empty: boolean;
+            /**
+             * Confirm Monotonic
+             * @default false
+             */
+            confirm_monotonic: boolean;
+            /** Source Token */
+            source_token: string;
+            /** Image Version */
+            image_version: string;
         };
         /**
          * SessionView
@@ -1305,6 +1370,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SampleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_annotations_api_v1_datasets__dataset__samples__sample__save_annotations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset: string;
+                sample: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAnnotationsRequest"];
             };
         };
         responses: {

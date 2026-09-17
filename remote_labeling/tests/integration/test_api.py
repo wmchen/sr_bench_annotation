@@ -88,12 +88,15 @@ def test_complete_roundtrip_and_export(client, region) -> None:
     commit = write | {
         "base_revision": 1,
         "operation_id": secrets.token_hex(16),
+        "source_token": response.json()["source_token"],
+        "image_version": response.json()["image_version"],
     }
-    committed = client.post(BASE + "/commit", json=commit)
+    committed = client.post(BASE + "/save-annotations", json=commit)
     assert committed.status_code == 200, committed.text
     assert committed.json()["complete"]
     assert (
-        client.post(BASE + "/commit", json=commit).json() == committed.json()
+        client.post(BASE + "/save-annotations", json=commit).json()
+        == committed.json()
     )
     payload.update(base_revision=2, operation_id=secrets.token_hex(16))
     payload["hr"][0]["description"] = "changed"
@@ -188,15 +191,22 @@ def test_share_scope_revocation_and_cached_image(client, settings) -> None:
 
 
 def test_commit_warnings_and_face_missing(client, region) -> None:
-    """Empty and non-monotonic confirmations are explicit; missing data blocks."""
+    """Empty groups require confirmation; incomplete face groups can be saved."""
     write = fence(client)
+    source = client.get(BASE).json()
+    write.update(
+        source_token=source["source_token"],
+        image_version=source["image_version"],
+    )
     assert (
-        client.post(BASE + "/commit", json=write).json()["error"]["code"]
+        client.post(BASE + "/save-annotations", json=write).json()["error"][
+            "code"
+        ]
         == "confirm_empty"
     )
     assert (
         client.post(
-            BASE + "/commit", json=write | {"confirm_empty": True}
+            BASE + "/save-annotations", json=write | {"confirm_empty": True}
         ).status_code
         == 200
     )
@@ -209,11 +219,16 @@ def test_commit_warnings_and_face_missing(client, region) -> None:
     assert saved.status_code == 200, saved.text
     assert (
         client.post(
-            base + "/commit",
+            base + "/save-annotations",
             json=write
-            | {"base_revision": 1, "operation_id": secrets.token_hex(16)},
-        ).json()["error"]["code"]
-        == "missing_recoverability"
+            | {
+                "base_revision": 1,
+                "operation_id": secrets.token_hex(16),
+                "source_token": saved.json()["source_token"],
+                "image_version": saved.json()["image_version"],
+            },
+        ).json()["complete"]
+        is False
     )
 
 

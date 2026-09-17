@@ -22,7 +22,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="realisr-browser-") as directory:
         root = Path(directory)
         datasets = {}
-        for task in ("text", "face", "opening"):
+        for task in ("text", "face", "opening", "writeback"):
             source = root / task
             for variant, factor in (
                 ("HR", 1),
@@ -160,7 +160,7 @@ def main() -> None:
         credential = Path(
             os.environ.get("REALISR_E2E_TOKEN", "/tmp/realisr-e2e-token")
         )
-        credential.write_text(json.dumps({"token": token}), encoding="utf-8")
+        credential.write_text(json.dumps({"token": token, "root": str(root)}), encoding="utf-8")
         credential.chmod(0o600)
         app = create_app(settings)
         config = uvicorn.Config(

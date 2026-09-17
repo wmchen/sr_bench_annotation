@@ -32,8 +32,8 @@ test("text four-view edit, OCR keyboard isolation, save and reload",async({page,
     await page.locator(".pane header strong").getByText(variant,{exact:true}).click();
     await page.locator(".evidence-buttons").getByRole("button",{name:"1",exact:true}).click();
   }
-  await expect(page.locator(".save-state")).toHaveText("已保存");
-  await page.getByRole("button",{name:"确认整组",exact:true}).click();
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
+  await page.getByRole("button",{name:"保存标注",exact:true}).click();
   await expect(page.locator(".sample-toolbar strong")).toHaveText(next);
   await page.getByRole("button",{name:sample}).click();
   await expect(page.getByLabel("OCR 真值")).not.toBeVisible();
@@ -60,7 +60,7 @@ test("two tabs cannot hold the same sample lease",async({browser})=>{
   await second.getByRole("button",{name:"000002.png"}).click();
   await second.getByRole("button",{name:"开始编辑"}).click();
   await expect(second.getByRole("alert")).toContainText("占用");
-  await expect(first.getByRole("button",{name:"确认整组",exact:true})).toBeEnabled();
+  await expect(first.getByRole("button",{name:"保存标注",exact:true})).toBeEnabled();
   await first.getByRole("button",{name:"结束编辑"}).click();
   await context.close();
 });
@@ -156,8 +156,8 @@ test("face requires explicit HR evidence and preserves geometry-only workflow",a
     await page.locator(".pane header strong").getByText(variant,{exact:true}).click();
     await page.locator(".evidence-buttons").getByRole("button",{name:variant==="HR"?"0":"1",exact:true}).click();
   }
-  await expect(page.locator(".save-state")).toHaveText("已保存");
-  await page.getByRole("button",{name:"确认整组",exact:true}).click();
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
+  await page.getByRole("button",{name:"保存标注",exact:true}).click();
   await expect(page.locator(".sample-toolbar strong")).not.toHaveText(sample);
   await page.getByRole("button",{name:sample}).click();
   await expect(page.locator(".region-list button small")).toHaveText("0 / 1 / 1 / 1");
@@ -174,14 +174,14 @@ test("geometry dragging and vertex edits are single undoable domain operations",
   const box=(await page.getByTestId("canvas-HR").boundingBox())!;
   await page.mouse.move(box.x+box.width*.3,box.y+box.height*.3);
   await page.mouse.down();await page.mouse.move(box.x+box.width*.65,box.y+box.height*.6);await page.mouse.up();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const current=()=>page.evaluate(async(name)=>{const r=await fetch("/api/v1/datasets/text/samples/"+name);return (await r.json()).draft.HR[0];},name);
   const before=await current();
   await page.getByRole("button",{name:"矩形 R",exact:true}).click();
   const scale=Math.min(box.width/800,box.height/600)*.94;
   await page.mouse.move(box.x+box.width*.475,box.y+box.height*.45);
   await page.mouse.down();await page.mouse.move(box.x+box.width*.475+25,box.y+box.height*.45+15,{steps:8});await page.mouse.up();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const moved=await current();
   expect(moved.region_id).toBe(before.region_id);
   expect(moved.points[0][0]-before.points[0][0]).toBeCloseTo(25/scale,0);
@@ -189,14 +189,14 @@ test("geometry dragging and vertex edits are single undoable domain operations",
   const x=box.x+box.width/2-400*scale+moved.points[0][0]*scale;
   const y=box.y+box.height/2-300*scale+moved.points[0][1]*scale;
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+10,y+10,{steps:5});await page.mouse.up();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   const resized=await current();
   expect(resized.points[0][0]).toBeGreaterThan(moved.points[0][0]);
   await page.getByRole("button",{name:"撤销",exact:true}).click();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   expect((await current()).points).toEqual(moved.points);
   await page.getByRole("button",{name:"重做",exact:true}).click();
-  await expect(page.locator(".save-state")).toHaveText("已保存");
+  await expect(page.locator(".save-state")).toHaveText("草稿已自动保存");
   expect((await current()).points).toEqual(resized.points);
   await page.getByRole("button",{name:"结束编辑"}).click();
 });
