@@ -60,6 +60,8 @@ export function App() {
   const navigation = useRef(0);
   const renewalDeadline = useRef(0);
 
+  useEffect(()=>()=>{queue.current?.dispose();cache.current.clear();},[]);
+
   function setSample(value: Sample | null) {
     const old=sampleRef.current;
     if(!value || !old || old.dataset!==value.dataset || old.id!==value.id || old.image_version!==value.image_version)setImages({});
@@ -281,6 +283,7 @@ export function App() {
     const stream=new EventSource("/api/v1/events");
     stream.onopen=()=>{setConnection("已连接");void sync();};
     stream.addEventListener("update",()=>void sync());
+    stream.addEventListener("shutdown",()=>{cancelled=true;stream.close();clearInterval(poll);});
     stream.addEventListener("revoked",()=>{setConnection("权限已失效");setLeaseHealthy(false);setError("分享已撤销或到期，请保留本地内容。");stream.close();cache.current.clear();setImages({});});
     stream.onerror=()=>setConnection("连接中断，正在轮询");
     const poll=setInterval(()=>void sync(),5000);

@@ -1064,6 +1064,23 @@
         }
       }
     },
+    "/api/v1/server-events": {
+      "get": {
+        "summary": "Server Events",
+        "description": "Notify every open page, including unauthenticated login pages.",
+        "operationId": "server_events_api_v1_server_events_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "get": {
         "summary": "Events",

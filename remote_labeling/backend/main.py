@@ -46,6 +46,7 @@ def create_app(settings: Settings) -> FastAPI:
     """Construct the standalone application without importing Qt or ONNX."""
     store = SQLiteStore(settings.state_dir, settings.sqlite_journal_mode)
     service = AnnotationService(settings, store)
+    shutdown_event = asyncio.Event()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -85,6 +86,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(title="Real-ISR Remote", version="0.1.0", lifespan=lifespan)
     app.state.service = service
+    app.state.shutdown_event = shutdown_event
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, exc: DomainError) -> JSONResponse:
@@ -424,6 +426,36 @@ def create_app(settings: Settings) -> FastAPI:
             media_type="application/zip",
         )
 
+    def shutdown_message() -> str:
+        """Expose only the configured browser countdown in shutdown events."""
+        data = {"countdown_seconds": settings.shutdown_countdown_seconds}
+        return f"event: shutdown\ndata: {json.dumps(data)}\n\n"
+
+    async def wait_for_shutdown(timeout: float) -> None:
+        """Wake promptly on shutdown while retaining stream heartbeats."""
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+
+    @app.get(prefix + "/server-events")
+    async def server_events(request: Request) -> Response:
+        """Notify every open page, including unauthenticated login pages."""
+
+        async def stream():
+            while not await request.is_disconnected():
+                if shutdown_event.is_set():
+                    yield shutdown_message()
+                    return
+                yield ": heartbeat\n\n"
+                await wait_for_shutdown(15)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"},
+        )
+
     @app.get(prefix + "/events")
     async def events(
         request: Request, after: int = Query(0, ge=0)
@@ -437,6 +469,9 @@ def create_app(settings: Settings) -> FastAPI:
         async def stream():
             cursor = last
             while not await request.is_disconnected():
+                if shutdown_event.is_set():
+                    yield shutdown_message()
+                    return
                 try:
                     rows = await run_in_threadpool(service.events, sid, cursor)
                 except DomainError:
@@ -446,7 +481,7 @@ def create_app(settings: Settings) -> FastAPI:
                     cursor = row["id"]
                     yield f"id: {cursor}\nevent: update\ndata: {json.dumps(row)}\n\n"
                 yield ": heartbeat\n\n"
-                await asyncio.sleep(0.5)
+                await wait_for_shutdown(0.5)
 
         return StreamingResponse(
             stream(),

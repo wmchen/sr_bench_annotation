@@ -45,6 +45,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
+    shutdown_countdown_seconds: int = Field(default=5, ge=0)
     public_origin: str = "http://127.0.0.1:8765"
     state_dir: Path
     export_dir: Path

@@ -310,3 +310,96 @@ test("session restore reports server failure and supports retry",async({page})=>
   await expect(page.locator(".topbar")).toContainText("所有者");
   expect(attempts).toBe(2);
 });
+
+/** Control lifecycle delivery while keeping the real login/workspace UI. */
+async function mockShutdownStream(page: Page, blockClose = true) {
+  await page.addInitScript(({blockClose}) => {
+    const nativeSource = window.EventSource;
+    (window as any).__shutdownStreams = [];
+    (window as any).__closeAttempts = 0;
+    if (blockClose) window.close = () => { (window as any).__closeAttempts++; };
+    window.EventSource = class extends nativeSource {
+      constructor(url: string | URL, options?: EventSourceInit) {
+        super(url, options);
+        (window as any).__shutdownStreams.push(this);
+      }
+    };
+    (window as any).__shutdown = (seconds: number) => {
+      for (const stream of (window as any).__shutdownStreams) {
+        if (stream.url.endsWith("/server-events")) {
+          stream.dispatchEvent(new MessageEvent("shutdown", {
+            data: JSON.stringify({countdown_seconds: seconds}),
+          }));
+        }
+      }
+    };
+  }, {blockClose});
+}
+
+test("shutdown countdown stops workspace connections and handles blocked close", async ({page}) => {
+  await mockShutdownStream(page);
+  await login(page);
+  await page.clock.install();
+  await page.evaluate(() => (window as any).__shutdown(5));
+  await expect(page.getByRole("heading", {name: "服务已停止"})).toBeVisible();
+  await expect(page.getByRole("timer")).toHaveText("5");
+  await expect(page.locator(".shutdown-progress")).toHaveCSS("animation-duration", "5s");
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).__shutdownStreams.every((stream: EventSource) => stream.readyState === EventSource.CLOSED)
+  )).toBe(true);
+  await page.clock.fastForward(2000);
+  await expect(page.getByRole("timer")).toHaveText("3");
+  await page.screenshot({path:"test-results/shutdown-countdown.png",fullPage:true});
+  await page.clock.fastForward(3000);
+  await expect(page.getByRole("status")).toContainText("请手动关闭此标签页");
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(1);
+  await page.clock.fastForward(10000);
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(1);
+});
+
+test("shutdown custom and zero countdown work on login pages", async ({page}) => {
+  await mockShutdownStream(page);
+  await page.goto("/#token=unused");
+  await page.clock.install();
+  await page.evaluate(() => (window as any).__shutdown(9));
+  await expect(page.getByRole("timer")).toHaveText("9");
+  await page.clock.fastForward(8000);
+  await expect(page.getByRole("timer")).toHaveText("1");
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(0);
+  await page.clock.fastForward(1000);
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(1);
+  await page.goto("/?shutdown-zero#token=unused");
+  await expect(page.getByRole("heading", {name: "远程标注工作台"})).toBeVisible();
+  await page.evaluate(() => (window as any).__shutdown(0));
+  await expect(page.getByRole("status")).toContainText("请手动关闭此标签页");
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(1);
+});
+
+test("shutdown closes a script-opened tab after its countdown", async ({page}) => {
+  await page.goto("/#token=unused");
+  const popupPromise = page.waitForEvent("popup");
+  await page.evaluate(() => window.open("about:blank"));
+  const popup = await popupPromise;
+  await mockShutdownStream(popup, false);
+  await popup.goto("/#token=unused");
+  await popup.clock.install();
+  await popup.evaluate(() => (window as any).__shutdown(2));
+  await expect(popup.getByRole("timer")).toHaveText("2");
+  const closed = popup.waitForEvent("close");
+  await popup.clock.fastForward(2000).catch(error => {
+    if (!popup.isClosed()) throw error;
+  });
+  await closed;
+});
+
+test("network interruption does not trigger shutdown countdown", async ({page}) => {
+  await mockShutdownStream(page);
+  await page.goto("/#token=unused");
+  await expect(page.getByRole("heading", {name: "远程标注工作台"})).toBeVisible();
+  await page.evaluate(() => {
+    for (const stream of (window as any).__shutdownStreams) stream.dispatchEvent(new Event("error"));
+  });
+  await expect(page.getByRole("heading", {name: "远程标注工作台"})).toBeVisible();
+  await expect(page.getByRole("timer")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__closeAttempts)).toBe(0);
+});

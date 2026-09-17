@@ -396,6 +396,10 @@ def test_cli_serve_disables_proxy_header_trust(
     monkeypatch.setattr(
         "sys.argv", ["realisr-remote", "serve", "--config", str(config)]
     )
-    with patch("uvicorn.run") as run:
+    with patch("remote_labeling.backend.server.RemoteServer") as server:
         main()
-    assert run.call_args.kwargs["proxy_headers"] is False
+    config, shutdown_event = server.call_args.args
+    assert config.proxy_headers is False
+    assert config.timeout_graceful_shutdown == 5
+    assert shutdown_event is config.app.state.shutdown_event
+    server.return_value.run.assert_called_once_with()

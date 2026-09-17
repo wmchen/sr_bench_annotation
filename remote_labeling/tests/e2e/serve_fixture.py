@@ -14,6 +14,7 @@ from remote_labeling.backend.infrastructure.persistence.sqlite import (
     SQLiteStore,
 )
 from remote_labeling.backend.main import create_app
+from remote_labeling.backend.server import RemoteServer
 
 
 def main() -> None:
@@ -127,13 +128,16 @@ def main() -> None:
         )
         credential.write_text(json.dumps({"token": token}), encoding="utf-8")
         credential.chmod(0o600)
-        uvicorn.run(
-            create_app(settings),
+        app = create_app(settings)
+        config = uvicorn.Config(
+            app,
             host=settings.host,
             port=settings.port,
             access_log=False,
             proxy_headers=False,
+            timeout_graceful_shutdown=5,
         )
+        RemoteServer(config, app.state.shutdown_event).run()
         credential.unlink(missing_ok=True)
 
 

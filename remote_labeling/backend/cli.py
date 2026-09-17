@@ -84,15 +84,19 @@ def main() -> None:
         if args.command == "serve":
             import uvicorn
             from .main import create_app
+            from .server import RemoteServer
 
-            uvicorn.run(
-                create_app(settings),
+            app = create_app(settings)
+            config = uvicorn.Config(
+                app,
                 host=settings.host,
                 port=settings.port,
                 workers=1,
                 access_log=False,
                 proxy_headers=False,
+                timeout_graceful_shutdown=5,
             )
+            RemoteServer(config, app.state.shutdown_event).run()
             return
         if args.command == "backup":
             if not args.file:
