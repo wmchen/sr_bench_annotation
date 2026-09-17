@@ -96,7 +96,11 @@ def main() -> None:
                 proxy_headers=False,
                 timeout_graceful_shutdown=5,
             )
-            RemoteServer(config, app.state.shutdown_event).run()
+            try:
+                RemoteServer(config, app.state.shutdown_event).run()
+            except KeyboardInterrupt:
+                # Like uvicorn.run(), handle SIGINT replayed after shutdown.
+                pass
             return
         if args.command == "backup":
             if not args.file:

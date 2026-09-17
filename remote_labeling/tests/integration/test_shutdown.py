@@ -133,10 +133,14 @@ def test_cli_exits_with_open_browser_streams(
                     assert json.loads(payload) == {
                         "countdown_seconds": 5 if seconds is None else seconds
                     }
-                assert "Application shutdown complete" in log.read_text()
-                assert (
-                    "timeout graceful shutdown exceeded" not in log.read_text()
-                )
+                shutdown_log = log.read_text()
+                assert "Application shutdown complete" in shutdown_log
+                assert "Traceback" not in shutdown_log, shutdown_log
+                assert "CancelledError" not in shutdown_log, shutdown_log
+                assert "KeyboardInterrupt" not in shutdown_log, shutdown_log
+                assert "timeout graceful shutdown exceeded" not in shutdown_log
+                if stop_signal == signal.SIGINT:
+                    assert process.returncode == 0, shutdown_log
                 # Lifespan released the instance lock before process exit.
                 service.store.acquire_instance()
                 service.store.release_instance()
