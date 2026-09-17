@@ -95,6 +95,48 @@ test("dense sample pan and zoom stays local and retains image resources",async({
   await expect(page.locator(".loading-image")).toHaveCount(0);
 });
 
+test("dense instance list keeps rows readable and scrolls to both ends",async({page})=>{
+  await login(page);
+  await page.getByLabel("数据集",{exact:true}).selectOption("text");
+  await page.getByRole("button",{name:"000010.png"}).click();
+  const list=page.locator(".region-list");
+  const rows=list.locator("button");
+  await expect(rows).toHaveCount(357);
+  for(const viewport of [{width:1600,height:1000},{width:1100,height:720}]){
+    await page.setViewportSize(viewport);
+    const layout=await list.evaluate(element=>{
+      const rows=Array.from(element.querySelectorAll("button"));
+      return {
+        height:element.clientHeight,
+        scrollHeight:element.scrollHeight,
+        readable:rows.every((row,index)=>{
+          const bounds=row.getBoundingClientRect();
+          const title=row.querySelector("span")!.getBoundingClientRect();
+          const evidence=row.querySelector("small")!.getBoundingClientRect();
+          const previous=rows[index-1]?.getBoundingClientRect();
+          return title.height>0 && evidence.height>0 &&
+            title.top>=bounds.top && title.bottom<=evidence.top &&
+            evidence.bottom<=bounds.bottom &&
+            (!previous || previous.bottom<bounds.top);
+        }),
+      };
+    });
+    expect(layout.readable).toBe(true);
+    expect(layout.height).toBeLessThanOrEqual(210);
+    expect(layout.scrollHeight).toBeGreaterThan(layout.height);
+    await rows.last().scrollIntoViewIfNeeded();
+    await rows.last().click();
+    await expect(rows.last()).toHaveClass("selected");
+    await expect(page.getByLabel("OCR 真值")).toHaveValue("356");
+    expect(await list.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+    await rows.first().scrollIntoViewIfNeeded();
+    await rows.first().click();
+    await expect(rows.first()).toHaveClass("selected");
+    await expect(page.getByLabel("OCR 真值")).toHaveValue("0");
+  }
+  await page.screenshot({path:"test-results/dense-instance-list.png",fullPage:true});
+});
+
 test("face requires explicit HR evidence and preserves geometry-only workflow",async({page,browserName})=>{
   await login(page);
   await page.getByLabel("数据集",{exact:true}).selectOption("face");
