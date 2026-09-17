@@ -7532,19 +7532,25 @@ class LabelingWidget(LabelDialog):
         try:
             if self._realisr_hr_dirty:
                 records = self._realisr_canvas_records()
-                if self.realisr_dataset.set_hr_records(
+                self.realisr_dataset.set_hr_records(
                     self.realisr_sample, records
-                ):
-                    self._realisr_hr_sync_dirty = True
+                )
+                # Even an edit that clips back to the previous data must
+                # restore the normalized geometry on the HR canvas.
+                self._realisr_hr_sync_dirty = True
             if self._realisr_hr_sync_dirty:
                 normalized = self.realisr_dataset.records_for(
                     self.realisr_sample, "HR"
                 )
                 hr_canvas = self.realisr_workspace.canvases["HR"]
                 for shape, record in zip(hr_canvas.shapes, normalized):
+                    points = [QtCore.QPointF(*p) for p in record["points"]]
+                    if shape.points != points:
+                        shape.points = points
                     shape.other_data["region_id"] = record["region_id"]
                     shape.other_data["recoverable"] = record["recoverable"]
                     self.apply_realisr_shape_color(shape, variant="HR")
+                hr_canvas.update()
                 self.realisr_workspace.rebuild_region_index("HR")
                 self.refresh_realisr_dependent_canvases()
                 self._realisr_hr_sync_dirty = False

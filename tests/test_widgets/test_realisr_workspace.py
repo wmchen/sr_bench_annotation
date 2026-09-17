@@ -475,6 +475,77 @@ class RealISRWorkspaceTest(unittest.TestCase):
             all(not canvas.out_off_pixmap(p) for p in shape.points)
         )
 
+    def test_fractional_drag_stops_at_each_closed_image_edge(self) -> None:
+        """Dragging rectangles and quadrilaterals never leaves subpixel overflow."""
+        canvas = self.workspace.canvases["HR"]
+        canvas.pixmap = QtGui.QPixmap(100, 100)
+        for kind in ("rectangle", "quadrilateral"):
+            for x, y, dx, dy in (
+                (0.2, 20, -0.8, 0),
+                (79.8, 20, 0.8, 0),
+                (20, 0.2, 0, -0.8),
+                (20, 79.8, 0, 0.8),
+                (0.2, 0.2, -100, -100),
+                (79.8, 79.8, 100, 100),
+            ):
+                with self.subTest(kind=kind, x=x, y=y, dx=dx, dy=dy):
+                    shape = Shape(label="text", shape_type=kind)
+                    shape.points = [
+                        QtCore.QPointF(x, y),
+                        QtCore.QPointF(x + 20, y),
+                        QtCore.QPointF(x + 20, y + 20),
+                        QtCore.QPointF(x, y + 20),
+                    ]
+                    shape.close()
+                    canvas.selected_shapes = [shape]
+                    canvas.prev_point = QtCore.QPointF(x + 10, y + 10)
+                    canvas.calculate_offsets(canvas.prev_point)
+                    self.assertTrue(
+                        canvas.bounded_move_shapes(
+                            [shape], canvas.prev_point + QtCore.QPointF(dx, dy)
+                        )
+                    )
+                    for point in shape.points:
+                        self.assertGreaterEqual(point.x(), 0)
+                        self.assertLessEqual(point.x(), 100)
+                        self.assertGreaterEqual(point.y(), 0)
+                        self.assertLessEqual(point.y(), 100)
+                    self.assertAlmostEqual(shape.bounding_rect().width(), 20)
+                    self.assertAlmostEqual(shape.bounding_rect().height(), 20)
+
+    def test_group_drag_and_duplicate_use_all_shape_bounds(self) -> None:
+        """Translation preserves relative positions even without cursor offsets."""
+        canvas = self.workspace.canvases["HR"]
+        canvas.pixmap = QtGui.QPixmap(100, 100)
+        shapes = []
+        for x in (0.25, 79.75):
+            shape = Shape(label="text", shape_type="rectangle")
+            shape.points = [
+                QtCore.QPointF(x, 10),
+                QtCore.QPointF(x + 20, 10),
+                QtCore.QPointF(x + 20, 30),
+                QtCore.QPointF(x, 30),
+            ]
+            shape.close()
+            shapes.append(shape)
+        canvas.prev_point = QtCore.QPointF(50, 20)
+        canvas.offsets = QtCore.QPointF(), QtCore.QPointF()
+        self.assertTrue(
+            canvas.bounded_move_shapes(shapes, QtCore.QPointF(80, 20))
+        )
+        self.assertEqual(shapes[1].bounding_rect().right(), 100)
+        self.assertEqual(shapes[0].bounding_rect().left(), 0.5)
+        self.assertTrue(
+            canvas.bounded_move_shapes(shapes, QtCore.QPointF(-100, 20))
+        )
+        self.assertEqual(shapes[0].bounding_rect().left(), 0)
+        self.assertEqual(shapes[1].bounding_rect().right(), 99.5)
+        canvas.bounded_shift_shapes(shapes)
+        for shape in shapes:
+            for point in shape.points:
+                self.assertTrue(0 <= point.x() <= 100)
+                self.assertTrue(0 <= point.y() <= 100)
+
     def test_non_hr_quadrilateral_boundary_policy_is_unchanged(self):
         canvas = self.workspace.canvases["LR2"]
 

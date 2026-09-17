@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import os.path as osp
 import re
@@ -206,6 +207,8 @@ class RealISRDataset:
         self.records = {}
         self.drafts = {}
         self.backup_cleanup_failures = []
+        self._draft_revision = 0
+        self._saved_draft_revision = 0
         self._discover()
         self._validate_attribute_binding()
         self._load_sources()
@@ -213,8 +216,6 @@ class RealISRDataset:
         self._load_draft()
         self._remove_stale_committed_backups()
         self.bind_attribute()
-        self._draft_revision = 0
-        self._saved_draft_revision = 0
         self._sample_stats_cache = {}
         self._dashboard_stats_cache = {}
         self._rebuild_dashboard_stats_cache()
@@ -503,6 +504,69 @@ class RealISRDataset:
             candidate = f"{prefix}{number:04d}"
         return candidate
 
+    def _bound_hr_points(self, sample: str, record: dict) -> list:
+        """Clip finite HR coordinates without rounding interior values.
+
+        Args:
+            sample: Image name used to resolve the actual HR dimensions.
+            record: Region whose geometry is being loaded or edited.
+
+        Returns:
+            Coordinates within the closed bounds [0, width] x [0, height].
+
+        Raises:
+            RealISRDatasetError: Coordinates are invalid or clipping collapses
+                the region, requiring manual correction.
+        """
+        location = f"HR/{sample} region {record.get('region_id', '<new>')}"
+        points = record.get("points", [])
+        if not isinstance(points, (list, tuple)):
+            raise RealISRDatasetError(f"{location}: points must be an array")
+        size = self.dimensions[("HR", sample)]
+        bounded = []
+        clipped = False
+        for index, point in enumerate(points):
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                raise RealISRDatasetError(
+                    f"{location}: point {index} must contain x and y"
+                )
+            target = []
+            for axis, value in enumerate(point):
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                ):
+                    raise RealISRDatasetError(
+                        f"{location}: point {index} coordinate {axis} "
+                        "must be a finite number"
+                    )
+                coordinate = max(0, min(size[axis], value))
+                clipped |= coordinate != value
+                target.append(coordinate)
+            bounded.append(target)
+        if clipped:
+            xs, ys = zip(*bounded)
+            degenerate = max(xs) <= min(xs) or max(ys) <= min(ys)
+            kind = record.get(
+                "shape_type",
+                "quadrilateral" if len(bounded) == 4 else "polygon",
+            )
+            if kind != "rectangle" and len(bounded) >= 3:
+                area = sum(
+                    p[0] * q[1] - q[0] * p[1]
+                    for p, q in zip(bounded, bounded[1:] + bounded[:1])
+                )
+                degenerate |= area == 0
+                if kind == "quadrilateral":
+                    degenerate |= len(set(map(tuple, bounded))) < 4
+            if degenerate:
+                raise RealISRDatasetError(
+                    f"{location}: region degenerates after boundary clipping; "
+                    "correct its geometry manually"
+                )
+        return bounded
+
     def _normalize_hr(self, sample, source):
         normalized = []
         used = set()
@@ -522,7 +586,7 @@ class RealISRDataset:
             value = record.get("recoverable", default)
             record["recoverable"] = value if value in (0, 1, 2) else default
             record.setdefault("points", [])
-            record["points"] = [list(point) for point in record["points"]]
+            record["points"] = self._bound_hr_points(sample, record)
             if self.attribute == "text":
                 record.setdefault(
                     "shape_type",
@@ -701,6 +765,8 @@ class RealISRDataset:
                 )
             self.records[sample] = restored
             self.drafts[sample] = copy.deepcopy(restored)
+            if restored != group:
+                self._draft_revision += 1
 
     def path_for(self, variant, sample):
         return str(self.root / variant / sample)

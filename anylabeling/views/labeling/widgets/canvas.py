@@ -3803,31 +3803,40 @@ class Canvas(
             if self.shape_can_leave_pixmap(shape.shape_type):
                 shape_types.append(shape.shape_type)
 
-        if self.out_off_pixmap(pos) and len(shape_types) == 0:
-            return False  # No need to move
         if len(shape_types) > 0 and len(shapes) != len(shape_types):
             return False
 
-        if len(shape_types) == 0:
-            o1 = pos + self.offsets[0]
-            if self.out_off_pixmap(o1):
-                pos -= QtCore.QPointF(min(0, int(o1.x())), min(0, int(o1.y())))
-            o2 = pos + self.offsets[1]
-            if self.out_off_pixmap(o2):
-                pos += QtCore.QPointF(
-                    min(0, int(self.pixmap.width() - o2.x())),
-                    min(0, int(self.pixmap.height() - o2.y())),
-                )
-        # XXX: The next line tracks the new position of the cursor
-        # relative to the shape, but also results in making it
-        # a bit "shaky" when nearing the border and allows it to
-        # go outside of the shape's area for some reason.
-        # self.calculateOffsets(self.selectedShapes, pos)
         dp = pos - self.prev_point
+        if not shape_types:
+            if self.pixmap is None:
+                return False
+            # Use the whole selection's geometry, including fractional edges.
+            # Integer cursor corrections lose subpixel overflow; cached offsets
+            # can also be stale when duplicating shapes or moving by keyboard.
+            bounds = shapes[0].bounding_rect()
+            for shape in shapes[1:]:
+                bounds = bounds.united(shape.bounding_rect())
+            width, height = self.pixmap.width(), self.pixmap.height()
+            if bounds.width() > width or bounds.height() > height:
+                return False
+            dp = QtCore.QPointF(
+                max(-bounds.left(), min(width - bounds.right(), dp.x())),
+                max(-bounds.top(), min(height - bounds.bottom(), dp.y())),
+            )
         if dp:
             for shape in shapes:
                 shape.move_by(dp)
-            self.prev_point = pos
+                if not shape_types:
+                    # Floating-point addition can still leave an epsilon-sized
+                    # overflow even when the translation itself is bounded.
+                    shape.points = [
+                        QtCore.QPointF(
+                            max(0.0, min(width, point.x())),
+                            max(0.0, min(height, point.y())),
+                        )
+                        for point in shape.points
+                    ]
+            self.prev_point += dp
             return True
         return False
 

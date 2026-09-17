@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from fastapi.testclient import TestClient
 
 from remote_labeling.backend.application.service import digest
 from remote_labeling.backend.domain.rules import DomainError
@@ -30,6 +31,45 @@ def fence(client, base: str = BASE) -> dict:
         "base_revision": 0,
         "operation_id": secrets.token_hex(16),
     }
+
+
+@pytest.mark.parametrize("attribute", ["text", "face"])
+@pytest.mark.parametrize(
+    "points",
+    [
+        [[-0.6, 10], [80, 70]],
+        [[10, -0.6], [80, 70]],
+        [[10, 10], [120.6, 70]],
+        [[10, 10], [80, 90.6]],
+    ],
+)
+def test_out_of_bounds_write_leaves_saved_group_unchanged(
+    client: TestClient, region: dict, attribute: str, points: list[list[float]]
+) -> None:
+    """HTTP saves reject subpixel overflow for both text and face datasets."""
+    base = f"/api/v1/datasets/{attribute}/samples/000000.png"
+    write = fence(client, base)
+    region = region | {"label": attribute, "description": ""}
+    saved = client.put(
+        base + "/draft", json=write | {"hr": [region], "recoverability": {}}
+    )
+    assert saved.status_code == 200, saved.text
+    previous = saved.json()
+    rejected = client.put(
+        base + "/draft",
+        json=write
+        | {
+            "base_revision": previous["revision"],
+            "operation_id": secrets.token_hex(16),
+            "hr": [region | {"points": points}],
+            "recoverability": {},
+        },
+    )
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["error"]["code"] == "coordinate"
+    current = client.get(base).json()
+    for field in ("revision", "draft", "formal"):
+        assert current[field] == previous[field]
 
 
 def test_complete_roundtrip_and_export(client, region) -> None:

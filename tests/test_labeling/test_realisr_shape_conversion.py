@@ -15,6 +15,7 @@ from PyQt6 import QtCore, QtGui, QtTest, QtWidgets
 
 import anylabeling.resources.resources  # noqa: F401
 from anylabeling.views.labeling.label_widget import LabelingWidget
+from anylabeling.views.labeling.shape import Shape
 from anylabeling.views.labeling.realisr_dataset import (
     RealISRDataset,
     VARIANTS,
@@ -36,6 +37,26 @@ class RealISRShapeConversionTest(unittest.TestCase):
         self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(
             []
         )
+        # LabelingWidget applies preferences to shared Shape class defaults.
+        # Restore them so later standalone canvas tests keep their own style.
+        shape_defaults = patch.multiple(
+            Shape,
+            **{
+                name: getattr(Shape, name)
+                for name in (
+                    "line_color",
+                    "fill_color",
+                    "select_line_color",
+                    "select_fill_color",
+                    "vertex_fill_color",
+                    "hvertex_fill_color",
+                    "point_size",
+                    "line_width",
+                )
+            },
+        )
+        shape_defaults.start()
+        self.addCleanup(shape_defaults.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.sample = "sample.png"
@@ -56,7 +77,7 @@ class RealISRShapeConversionTest(unittest.TestCase):
             "description": "原始文本",
             "shape_type": "quadrilateral",
             "points": [
-                [-1.25, 5.5],
+                [1.25, 5.5],
                 [20.75, 3.25],
                 [23.5, 19.5],
                 [2.5, 22.75],
@@ -186,16 +207,16 @@ class RealISRShapeConversionTest(unittest.TestCase):
                 original,
                 shape_type="rectangle",
                 points=[
-                    (-1.25, 3.25),
+                    (1.25, 3.25),
                     (23.5, 3.25),
                     (23.5, 22.75),
-                    (-1.25, 22.75),
+                    (1.25, 22.75),
                 ],
             ),
         )
         self.assertEqual(self.canvas.shapes[1].to_dict(), untouched)
         self.assertEqual(
-            shape.bounding_rect(), QtCore.QRectF(-1.25, 3.25, 24.75, 19.5)
+            shape.bounding_rect(), QtCore.QRectF(1.25, 3.25, 22.25, 19.5)
         )
         self.assertFalse(
             self.widget.actions.realisr_convert_to_rectangle.isEnabled()
@@ -208,8 +229,8 @@ class RealISRShapeConversionTest(unittest.TestCase):
         self,
     ):
         for points in (
-            [(23.5, 22.75), (-1.25, 3.25)],
-            [(23.5, 22.75), (23.5, 3.25), (-1.25, 3.25), (-1.25, 22.75)],
+            [(23.5, 22.75), (1.25, 3.25)],
+            [(23.5, 22.75), (23.5, 3.25), (1.25, 3.25), (1.25, 22.75)],
         ):
             with self.subTest(points=points):
                 shape = self.canvas.shapes[0]
@@ -221,16 +242,16 @@ class RealISRShapeConversionTest(unittest.TestCase):
                 self.assertEqual(
                     shape.to_dict()["points"],
                     [
-                        (-1.25, 3.25),
+                        (1.25, 3.25),
                         (23.5, 3.25),
                         (23.5, 22.75),
-                        (-1.25, 22.75),
+                        (1.25, 22.75),
                     ],
                 )
                 self.assertTrue(shape.is_closed())
 
     def test_chosen_start_and_direction_control_saved_vertex_order(self):
-        corners = [(-1.25, 3.25), (23.5, 3.25), (23.5, 22.75), (-1.25, 22.75)]
+        corners = [(1.25, 3.25), (23.5, 3.25), (23.5, 22.75), (1.25, 22.75)]
         for start, clockwise, order in (
             (0, True, [0, 1, 2, 3]),
             (1, True, [1, 2, 3, 0]),
@@ -258,6 +279,40 @@ class RealISRShapeConversionTest(unittest.TestCase):
                     restored.records_for(self.sample, "HR")[0]["points"],
                     [list(point) for point in expected],
                 )
+
+    def test_flush_clips_live_canvas_and_persists_matching_geometry(
+        self,
+    ) -> None:
+        """Real widget autosave reconciles external/model geometry with HR/LR."""
+        shape = self.canvas.shapes[0]
+        shape.points = [
+            QtCore.QPointF(-0.6, 5.5),
+            QtCore.QPointF(120.6, 3.25),
+            QtCore.QPointF(120.6, 119.5),
+            QtCore.QPointF(-0.6, 119.5),
+        ]
+        expected = [[0, 5.5], [120, 3.25], [120, 119.5], [0, 119.5]]
+        self.widget.set_dirty()
+        self.assertTrue(self.widget.flush_realisr_draft())
+        self.assertIs(self.canvas.shapes[0], shape)
+        self.assertEqual(self.canvas.selected_shapes, [shape])
+        self.assertEqual(shape.points, [QtCore.QPointF(*p) for p in expected])
+        restored = RealISRDataset(self.root, "text")
+        for variant in VARIANTS:
+            target = (
+                expected
+                if variant == "HR"
+                else scale_points(
+                    expected, self.sizes["HR"], self.sizes[variant]
+                )
+            )
+            self.assertEqual(
+                restored.records_for(self.sample, variant)[0]["points"], target
+            )
+            canvas = self.widget.realisr_workspace.canvases[variant]
+            self.assertEqual(
+                canvas.shapes[0].points, [QtCore.QPointF(*p) for p in target]
+            )
 
     def test_cancelling_dialog_keeps_rectangle_selection_and_history(self):
         self.widget.convert_realisr_shape("rectangle")

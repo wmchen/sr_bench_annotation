@@ -518,6 +518,68 @@ class RealISRLabelWidgetTest(unittest.TestCase):
             for button in buttons.values():
                 self.assertEqual(button.setEnabled.call_args, call(enabled))
 
+    def test_flush_updates_canvas_with_clipped_hr_even_if_data_unchanged(
+        self,
+    ) -> None:
+        """Autosave must display the bounded geometry returned by the dataset."""
+        for changed in (True, False):
+            with self.subTest(changed=changed):
+                shape = Shape(label="text", shape_type="quadrilateral")
+                shape.points = [
+                    QtCore.QPointF(-0.6, 1.25),
+                    QtCore.QPointF(12.6, 1.25),
+                    QtCore.QPointF(12.6, 11),
+                    QtCore.QPointF(-0.6, 11),
+                ]
+                points = [[0, 1.25], [12, 1.25], [12, 11], [0, 11]]
+                record = {
+                    "points": points,
+                    "region_id": "stable",
+                    "recoverable": 0,
+                }
+                canvas = SimpleNamespace(shapes=[shape], update=Mock())
+                dataset = SimpleNamespace(
+                    set_hr_records=Mock(return_value=changed),
+                    records_for=Mock(return_value=[record]),
+                    save_draft=Mock(),
+                    missing_counts=Mock(
+                        return_value=dict.fromkeys(
+                            ("HR", "LR2", "LR3", "LR4"), 0
+                        )
+                    ),
+                )
+                widget = SimpleNamespace(
+                    realisr_draft_timer=Mock(),
+                    realisr_mode=True,
+                    realisr_dataset=dataset,
+                    _realisr_loading=False,
+                    realisr_sample="sample.png",
+                    _realisr_hr_dirty=True,
+                    _realisr_hr_sync_dirty=False,
+                    _realisr_draft_dirty=True,
+                    _realisr_canvas_records=Mock(
+                        return_value=[shape.to_dict()]
+                    ),
+                    realisr_workspace=SimpleNamespace(
+                        canvases={"HR": canvas}, rebuild_region_index=Mock()
+                    ),
+                    apply_realisr_shape_color=Mock(),
+                    refresh_realisr_dependent_canvases=Mock(),
+                    refresh_realisr_file_item=Mock(),
+                    update_realisr_ui=Mock(),
+                    status=Mock(),
+                    tr=lambda text: text,
+                )
+                self.assertTrue(LabelingWidget.flush_realisr_draft(widget))
+                self.assertEqual(
+                    shape.points, [QtCore.QPointF(*p) for p in points]
+                )
+                self.assertEqual(shape.other_data["region_id"], "stable")
+                canvas.update.assert_called_once()
+                widget.refresh_realisr_dependent_canvases.assert_called_once()
+                dataset.save_draft.assert_called_once()
+                self.assertFalse(widget._realisr_hr_dirty)
+
     def test_hr_face_assignment_flushes_new_region_before_setting_value(self):
         shape = Shape(label="face", shape_type="rectangle")
         shape.other_data["recoverable"] = None

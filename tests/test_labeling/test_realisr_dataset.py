@@ -141,6 +141,173 @@ class RealISRDatasetTest(unittest.TestCase):
         self.assertEqual(metadata["schema_version"], SCHEMA_VERSION)
         self.assertEqual(metadata["attribute"], "text")
 
+    def boundary_dataset(self, attribute: str) -> RealISRDataset:
+        """Create an isolated dataset for each boundary-test attribute."""
+        root = self.root / attribute
+        for variant, size in self.dimensions.items():
+            folder = root / variant
+            folder.mkdir(parents=True, exist_ok=True)
+            write_png_header(folder / "000001.png", *size)
+        return RealISRDataset(root, attribute)
+
+    def test_clipped_hr_round_trips_draft_formal_and_lr(self) -> None:
+        """Preserve metadata and fractional precision while bounding all output."""
+        sample = "000001.png"
+        original = [[-0.6, 1.25], [12.6, 1.25], [12.6, 11], [-0.6, 11]]
+        expected = [[0, 1.25], [12, 1.25], [12, 11], [0, 11]]
+        for attribute in ("text", "face"):
+            with self.subTest(attribute=attribute):
+                dataset = self.boundary_dataset(attribute)
+                record = (
+                    self.text_record(original)
+                    if attribute == "text"
+                    else self.face_record(original)
+                )
+                record["custom"] = {"keep": True}
+                before = copy.deepcopy(record)
+                region_id = self.add_record(dataset, record)
+                self.complete(dataset, region_id)
+                self.assertEqual(record, before)
+                dataset.save_draft()
+                restored = RealISRDataset(dataset.root, attribute)
+                self.assertEqual(
+                    restored.records_for(sample, "HR")[0]["points"], expected
+                )
+                restored.commit_sample(sample)
+                for variant in VARIANTS:
+                    payload = json.loads(
+                        Path(
+                            restored.json_path_for(variant, sample)
+                        ).read_text()
+                    )
+                    actual = payload["shapes"][0]
+                    target = (
+                        expected
+                        if variant == "HR"
+                        else scale_points(
+                            expected, (12, 12), self.dimensions[variant]
+                        )
+                    )
+                    self.assertEqual(actual["points"], target)
+                    self.assertEqual(actual["region_id"], region_id)
+                    self.assertEqual(actual["custom"], {"keep": True})
+                    self.assertEqual(
+                        actual["description"], record["description"]
+                    )
+                self.assertEqual(
+                    RealISRDataset(dataset.root, attribute).group(sample),
+                    restored.group(sample),
+                )
+
+    def test_invalid_hr_coordinates_do_not_change_previous_draft(self) -> None:
+        """Reject malformed or non-finite geometry before mutating any group."""
+        dataset = self.boundary_dataset("text")
+        self.add_record(dataset, self.text_record())
+        dataset.save_draft()
+        previous = dataset.group("000001.png")
+        path = dataset.annotation_root / DRAFT_FILENAME
+        before = path.read_bytes()
+        for point in (
+            [float("nan"), 1],
+            [float("inf"), 1],
+            [-float("inf"), 1],
+            [True, 1],
+            ["2", 1],
+            [None, 1],
+            [1],
+            [1, 2, 3],
+        ):
+            with self.subTest(point=point):
+                record = self.text_record([point, [8, 1], [8, 8], [1, 8]])
+                with self.assertRaises(RealISRDatasetError):
+                    dataset.set_hr_records("000001.png", [record])
+                self.assertEqual(dataset.group("000001.png"), previous)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_clipping_cannot_silently_collapse_a_region(self) -> None:
+        """Report fully outside boxes and quadrilaterals losing a vertex."""
+        for attribute, points in (
+            ("face", [[-5, 1], [-1, 5]]),
+            ("face", [[13, 1], [15, 5]]),
+            ("text", [[-5, -3], [-1, -2], [13, 13], [14, 14]]),
+            ("text", [[-1, -1], [-2, -2], [8, 8], [0, 8]]),
+        ):
+            with self.subTest(attribute=attribute, points=points):
+                dataset = self.boundary_dataset(attribute)
+                record = (
+                    self.text_record(points)
+                    if attribute == "text"
+                    else self.face_record(points)
+                )
+                with self.assertRaisesRegex(
+                    RealISRDatasetError, "degenerates after boundary clipping"
+                ):
+                    self.add_record(dataset, record)
+                self.assertEqual(dataset.records_for("000001.png", "HR"), [])
+
+    def test_loading_legacy_bounds_repairs_memory_before_saving(self) -> None:
+        """Repair formal and draft imports without rewriting them during open."""
+        sample = "000001.png"
+        for attribute in ("text", "face"):
+            with self.subTest(attribute=attribute):
+                dataset = self.boundary_dataset(attribute)
+                record = (
+                    self.text_record()
+                    if attribute == "text"
+                    else self.face_record()
+                )
+                region_id = self.add_record(dataset, record)
+                self.complete(dataset, region_id)
+                dataset.commit_sample(sample)
+                hr_path = Path(dataset.json_path_for("HR", sample))
+                formal = json.loads(hr_path.read_text())
+                formal["shapes"][0]["points"] = [
+                    [-0.5, 1.25],
+                    [12.5, 1.25],
+                    [12.5, 11],
+                    [-0.5, 11],
+                ]
+                hr_path.write_text(json.dumps(formal))
+                formal_bytes = hr_path.read_bytes()
+                restored = RealISRDataset(dataset.root, attribute)
+                expected = [[0, 1.25], [12, 1.25], [12, 11], [0, 11]]
+                self.assertEqual(
+                    restored.records_for(sample, "HR")[0]["points"], expected
+                )
+                self.assertEqual(hr_path.read_bytes(), formal_bytes)
+                draft_group = restored.group(sample)
+                draft_group["HR"][0]["points"] = [
+                    [-1, 2.75],
+                    [13, 2.75],
+                    [13, 12.5],
+                    [-1, 12.5],
+                ]
+                path = restored.annotation_root / DRAFT_FILENAME
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "attribute": attribute,
+                            "samples": {sample: draft_group},
+                        }
+                    )
+                )
+                draft_bytes = path.read_bytes()
+                restored = RealISRDataset(dataset.root, attribute)
+                expected = [[0, 2.75], [12, 2.75], [12, 12], [0, 12]]
+                self.assertEqual(path.read_bytes(), draft_bytes)
+                self.assertEqual(hr_path.read_bytes(), formal_bytes)
+                self.assertTrue(restored.save_draft())
+                saved = json.loads(path.read_text())["samples"][sample]
+                self.assertEqual(saved["HR"][0]["points"], expected)
+                for variant in VARIANTS[1:]:
+                    self.assertEqual(
+                        saved[variant][0]["points"],
+                        scale_points(
+                            expected, (12, 12), self.dimensions[variant]
+                        ),
+                    )
+
     def test_text_geometry_is_scaled_using_actual_dimensions(self):
         dataset = RealISRDataset(self.root, "text")
         region_id = self.add_record(dataset, self.text_record())
