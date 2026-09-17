@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, variants, type DatasetStatistics } from "../../api/client";
 import { initialStatistics, StatisticsResource } from "./statisticsResource";
 
-interface Props { dataset: string; refresh: number; localPending: boolean; enabled: boolean }
+interface Props { dataset: string; refresh: number; localPending: boolean; enabled: boolean; current: ReactNode }
 const number = (value: number): string => value.toLocaleString("zh-CN");
 const percent = (value: number, total: number): string => total ? `${(value / total * 100).toFixed(1)}%` : "—";
 const evidence = [
@@ -10,25 +10,30 @@ const evidence = [
 ] as const;
 
 /** The parent keys this panel by session and dataset to isolate response state. */
-export function DatasetStatisticsPanel({ dataset, refresh, localPending, enabled }: Props) {
+export function DatasetStatisticsPanel({ dataset, refresh, localPending, enabled, current }: Props) {
+  const [view, setView] = useState<"dataset" | "image">("dataset");
   const [state, setState] = useState(initialStatistics);
   const resource = useRef<StatisticsResource | null>(null);
   useEffect(() => {
     if (!enabled || !dataset) { setState(initialStatistics); return; }
-    const current = new StatisticsResource(
+    const loader = new StatisticsResource(
       () => api<DatasetStatistics>(`/datasets/${encodeURIComponent(dataset)}/statistics`), setState,
     );
-    resource.current = current;
-    return () => { current.dispose(); resource.current = null; };
+    resource.current = loader;
+    return () => { loader.dispose(); resource.current = null; };
   }, [dataset, enabled]);
   useEffect(() => { void resource.current?.refresh(); }, [dataset, enabled, refresh]);
 
   const stats = enabled ? state.data : null;
   return <section className="panel dataset-statistics" aria-label="数据集统计">
-    <h3>数据集统计 <small>{stats ? stats.attribute === "text" ? "文本" : "人脸" : ""}</small></h3>
-    {!enabled ? <p className="subtle">统计访问权限已失效</p> : !dataset ? <p className="subtle">请先选择数据集</p> : <>
+    <h3>数据集统计 <span className="statistics-view-switch" role="group" aria-label="统计视图">
+      <button type="button" aria-pressed={view === "dataset"} onClick={() => setView("dataset")}>数据集</button>
+      <button type="button" aria-pressed={view === "image"} onClick={() => setView("image")}>当前图像</button>
+    </span></h3>
+    {!enabled || state.denied ? <p className="subtle">统计访问权限已失效</p> : !dataset ? <p className="subtle">请先选择数据集</p> : <>
+      {view === "image" ? current : <>
       {stats ? <>
-        <div className="statistics-scope">{stats.scope === "sample" ? "当前分享范围" : "全部可访问样本"}</div>
+        <div className="statistics-scope"><span>{stats.scope === "sample" ? "当前分享范围" : "全部可访问样本"}</span><span>{stats.attribute === "text" ? "文本" : "人脸"}</span></div>
         {stats.status !== "ready" && <p className="statistics-notice" role="status">{stats.status === "scanning" ? "扫描中 · 统计暂未更新" : stats.import_version > 0 ? "校验失败 · 仅显示上次成功导入的统计" : "校验失败 · 暂无成功导入数据"}</p>}
         <dl className="statistics-counts">
           <div><dt>样本组</dt><dd data-testid="statistics-groups">{number(stats.sample_groups)}</dd></div>
@@ -64,6 +69,7 @@ export function DatasetStatisticsPanel({ dataset, refresh, localPending, enabled
       {state.error && <div className="statistics-error" role="status"><span>{state.error}{stats ? "，保留上次结果" : ""}</span>
         {!state.denied && <button type="button" onClick={() => void resource.current?.refresh()}>重试统计</button>}
       </div>}
+      </>}
     </>}
   </section>;
 }

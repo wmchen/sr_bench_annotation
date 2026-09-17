@@ -69,3 +69,12 @@ body.sidebar-resizing,body.sidebar-resizing *{cursor:col-resize!important;user-s
 .statistics-variant dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 12px;margin:0;font-size:10px}.statistics-variant dl>div{display:flex;justify-content:space-between;gap:3px}.statistics-variant dd{margin:0;overflow-wrap:anywhere}.statistics-variant dt{color:#9aadc4}.statistics-variant i{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:4px}
 .evidence-sufficient{background:#38d9a9}.evidence-ambiguous{background:#ffd166}.evidence-insufficient{background:#ff7b86}.evidence-unset{background:#8292a8}
 .statistics-error{display:flex;align-items:center;justify-content:space-between;gap:5px;color:#ffd166;font-size:10px;margin-top:6px}.statistics-error button{flex-shrink:0}
+
+.statistics-scope{display:flex;justify-content:space-between;gap:6px}
+.statistics-view-switch{display:inline-flex;gap:2px;background:#101b29;border:1px solid #304157;border-radius:5px;padding:2px}
+.statistics-view-switch button{font-size:10px;padding:3px 5px;border:0;background:transparent;border-radius:3px;line-height:1.2}
+.statistics-view-switch button[aria-pressed="true"]{background:#294361;color:#d8eaff}.statistics-view-switch button:focus-visible{outline:2px solid #94c7ff}
+.image-progress-filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:6px 0;color:#c4d6eb}
+.image-progress-overview{display:flex;align-items:center;gap:10px;margin:8px 0}.image-progress-overview>strong{font-size:23px;font-weight:600;color:#b8d6fb}.image-progress-overview>span{display:flex;flex-direction:column;gap:2px;font-size:10px;color:#9aadc4}.image-progress-overview b{font-size:12px;font-weight:400;color:#dce6f4}
+.image-progress-variants{display:flex;flex-direction:column;gap:3px;margin:8px 0}.image-progress-variants>div{display:flex;align-items:center;gap:7px;padding:4px;border-radius:3px;font-size:10px;color:#9aadc4}.image-progress-variants .is-active{background:#20364d;color:#d8eaff}.image-progress-variants strong{width:26px;font-weight:500}.image-progress-variants progress{flex:1;min-width:0;width:0;height:4px;margin:0}.image-progress-variants span{min-width:30px;text-align:right}
+.current-image-progress .statistics-notice{margin:0}

@@ -120,3 +120,11 @@ GPU 预热 profile 记录到 CUDAExecutionProvider；进程正常退出。
 - Black 检查及 `git diff --check` 通过。当前 `/tmp/realisr-remote-noqt` 环境未安装 Flake8，因此未执行该检查。
 - 正常／展开／窄侧栏截图保存在 `frontend/test-results/statistics-compact-overvie-c1cb5-nt-scope-and-narrow-sidebar-{chromium,firefox}/statistics-{default,expanded,narrow}.png`；大数字状态截图位于 `/tmp/realisr-statistics-state-tests/`。
 - 本次测试使用隔离的临时数据集；未执行实际服务重启或生产部署，无状态库迁移。
+
+
+## 当前图像标注进度增量验证（2026-09-17）
+
+- 数据看板增加“数据集 / 当前图像”切换；当前视图显示活动倍率证据比例、证据齐全区域数、四倍率进度与保存状态，使用画布当前内容实时计算，无新增后端接口。
+- 当前图像进度覆盖本地赋值、撤销／重做、区域删除及恢复，正式／草稿切换、样本加载遮蔽旧结果、空组及数据集统计接口失败等场景。
+- Vitest 34 项通过；Chromium、Firefox 的当前图像、既有数据看板及侧栏回归共 22 项通过。TypeScript 检查、Vite 构建与 `git diff --check` 通过。
+- 已检查 235px 最窄侧栏截图，文件为 `/tmp/realisr-current-image-progress.png`；两浏览器完整测试附件位于 `/tmp/realisr-current-image-tests/`。

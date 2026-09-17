@@ -14,6 +14,7 @@ import { SaveQueue, type SaveStatus } from "./state/saveQueue";
 import { WorkspaceLayout } from "./features/layout/WorkspaceLayout";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
 import { InferencePanel } from "./features/inference/InferencePanel";
+import { CurrentImageProgress } from "./features/statistics/CurrentImageProgress";
 import { DatasetStatisticsPanel } from "./features/statistics/DatasetStatisticsPanel";
 import { SharingPanel } from "./features/sharing/SharingPanel";
 
@@ -563,7 +564,8 @@ export function App() {
       </aside>
     } inspector={
       <aside className="inspector">
-        <DatasetStatisticsPanel key={JSON.stringify([user.session_id,dataset])} dataset={dataset} refresh={refreshCount} localPending={status!=="saved" || !!localRecovery} enabled={statisticsAllowed}/>
+        <DatasetStatisticsPanel key={JSON.stringify([user.session_id,dataset])} dataset={dataset} refresh={refreshCount} localPending={status!=="saved" || !!localRecovery} enabled={statisticsAllowed}
+          current={<CurrentImageProgress sample={sample?.dataset===dataset?sample:null} group={group} active={active} opening={opening} showDraft={!!lease || savedDraft || !sample?.formal} saveStatus={status}/>}/>
         <section className="panel"><h3>区域属性 <small>{selected.length ? "已选 "+selected.length : "未选择"}</small></h3>
           <p className="subtle">0 证据充分 · 1 证据模糊 · 2 证据不足</p>
           <div className="evidence-buttons">{[0,1,2].map(value=><button key={value} data-value={value} disabled={!editable||!selected.length} onClick={()=>setEvidence(value)}>{value}</button>)}</div>
