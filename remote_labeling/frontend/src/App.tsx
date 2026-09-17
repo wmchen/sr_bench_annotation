@@ -9,6 +9,7 @@ import { convert, evidence, recoverability, syncHR, typing } from "./state/domai
 import { recovery, type Recovery } from "./state/recovery";
 import { ImageCache } from "./state/imageCache";
 import { needsWriteback } from "./features/workspace/sourceSync";
+import { selectRegion, type RegionSelection } from "./features/workspace/selection";
 import { SaveQueue, type SaveStatus } from "./state/saveQueue";
 import { WorkspaceLayout } from "./features/layout/WorkspaceLayout";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
@@ -40,7 +41,8 @@ export function App() {
   const sampleRef = useRef<Sample | null>(null);
   const [group,setGroupState] = useState<Group>(emptyGroup());
   const groupRef = useRef<Group>(emptyGroup());
-  const [selected,setSelected] = useState<string[]>([]);
+  const [selection,setSelection] = useState<RegionSelection>({ids:[],anchor:null});
+  const selected = selection.ids;
   const [active,setActive] = useState<Variant>("HR");
   const [mode,setMode] = useState<Mode>("select");
   const [focus,setFocus] = useState(0);
@@ -86,6 +88,10 @@ export function App() {
     sampleRef.current=value;setSampleState(value);
   }
   function setGroup(value: Group) { groupRef.current=value;setGroupState(value); }
+  /** Keep list range selection anchored to the last canvas click or new shape. */
+  function setSelected(ids: string[], anchor: string | null = ids.at(-1) ?? null): void {
+    setSelection({ids,anchor});
+  }
   function setLease(value: Lease | null) { leaseRef.current=value;setLeaseState(value); }
   function onError(value: unknown) {
     setError(value instanceof Error?value.message:String(value));
@@ -569,7 +575,7 @@ export function App() {
               else change(syncHR(group.HR.map(r=>r===selectedRegion?convert(r,"rectangle"):r),group,sample.dimensions));
             }}>转换为{selectedRegion.shape_type==="rectangle"?"四边形":"矩形"}</button>}
           </>}
-          <div className="region-list">{group.HR.map((r,i)=><button key={r.region_id} className={selected.includes(r.region_id)?"selected":""} onClick={e=>setSelected(e.shiftKey?selected.includes(r.region_id)?selected.filter(id=>id!==r.region_id):[...selected,r.region_id]:[r.region_id])}>
+          <div className="region-list">{group.HR.map((r,i)=><button key={r.region_id} className={selected.includes(r.region_id)?"selected":""} onClick={e=>setSelection(previous=>selectRegion(previous,group.HR.map(region=>region.region_id),r.region_id,e))}>
             <span>{i+1}. {r.description||r.label}</span><small>{variants.map(v=>group[v].find(other=>other.region_id===r.region_id)?.recoverable??"—").join(" / ")}</small>
           </button>)}</div>
         </section>
@@ -617,7 +623,7 @@ export function App() {
           {!sample.formal && !lease && <div className="draft-notice">尚无正式结果，当前展示已保存草稿。</div>}
           <Workspace sample={sample} group={group} images={images} editable={editable} selected={selected} mode={mode} active={active} focus={focus}
             onSelect={setSelected} onActive={setActive} onChange={change}/>
-          <footer className="editor-footer"><span>滚轮缩放 · 框外左键平移 · 空格 + 左键强制平移 · Shift 多选 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
+          <footer className="editor-footer"><span>滚轮缩放 · 框外左键平移 · 空格 + 左键强制平移 · Ctrl/Cmd + 单击多选 · 列表 Shift + 单击范围选择 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
         </>}
       </main>
     </WorkspaceLayout>

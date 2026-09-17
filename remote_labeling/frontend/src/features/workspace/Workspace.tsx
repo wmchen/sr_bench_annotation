@@ -10,7 +10,7 @@ interface Viewport { cx: number; cy: number; zoom: number }
 interface Props {
   sample: Sample; group: Group; images: Partial<Record<Variant, ImageBitmap>>;
   editable: boolean; selected: string[]; mode: Mode; active: Variant; focus: number;
-  onSelect: (ids: string[]) => void; onActive: (v: Variant) => void;
+  onSelect: (ids: string[], anchor?: string) => void; onActive: (v: Variant) => void;
   onChange: (group: Group) => void;
 }
 const colors = ["#38d9a9", "#ffd166", "#ff7b86"];
@@ -226,8 +226,8 @@ function Pane(props: PaneProps) {
       }
     } else if (target) {
       const selected = props.selected.includes(target.region.region_id);
-      if (event.shiftKey) {
-        props.onSelect(selected ? props.selected.filter(id=>id!==target.region.region_id) : [...props.selected,target.region.region_id]);
+      if (event.ctrlKey || event.metaKey) {
+        props.onSelect(selected ? props.selected.filter(id=>id!==target.region.region_id) : [...props.selected,target.region.region_id], target.region.region_id);
       } else {
         props.onSelect([target.region.region_id]);
         // A first click only selects; dragging requires an existing selection.
