@@ -108,3 +108,15 @@ GPU 预热 profile 记录到 CUDAExecutionProvider；进程正常退出。
 - NaN、无穷大、非数值坐标和贴边后退化的 HR 区域继续报错。
 - 针对性测试覆盖矩形/四边形、四个边界、精度、LR 同步、修复前后记录、
   草稿/正式快照、只读扫描和已有线上修改保护。
+
+
+## 数据集统计看板增量验证（2026-09-17）
+
+- 右侧区域属性上方增加紧凑统计及四倍率详情；默认面板高度在两个浏览器中均不超过 300px，适配 235px 最窄侧栏。
+- `pytest remote_labeling/tests/unit remote_labeling/tests/integration`：176 passed、4 skipped。跳过项是需要显式开启的真实下载测试及需要模型权重的 OCR/SCRFD 测试；推理结果应用对计数的更新已有不依赖模型权重的回归覆盖。
+- 前端 Vitest：24 passed；`npm run build`、`npm run check:api`、API 契约及无 Qt 导入检查通过。
+- Chromium、Firefox：看板和既有侧栏 18 项通过，另有加载、大数字、扫描失败、空数据集状态 2 项通过，共 20 项。
+- 覆盖服务器草稿、正式写回、再次编辑、撤销后保存、区域删除、空组确认、写回失败及重试、单样本分享、权限撤销、过期响应、局部重试。缓存命中路径验证不解析样本 JSON、不读取源文件；重扫和样本修订会使对应缓存失效。
+- Black 检查及 `git diff --check` 通过。当前 `/tmp/realisr-remote-noqt` 环境未安装 Flake8，因此未执行该检查。
+- 正常／展开／窄侧栏截图保存在 `frontend/test-results/statistics-compact-overvie-c1cb5-nt-scope-and-narrow-sidebar-{chromium,firefox}/statistics-{default,expanded,narrow}.png`；大数字状态截图位于 `/tmp/realisr-statistics-state-tests/`。
+- 本次测试使用隔离的临时数据集；未执行实际服务重启或生产部署，无状态库迁移。

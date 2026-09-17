@@ -13,6 +13,7 @@ import { SaveQueue, type SaveStatus } from "./state/saveQueue";
 import { WorkspaceLayout } from "./features/layout/WorkspaceLayout";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
 import { InferencePanel } from "./features/inference/InferencePanel";
+import { DatasetStatisticsPanel } from "./features/statistics/DatasetStatisticsPanel";
 import { SharingPanel } from "./features/sharing/SharingPanel";
 
 const emptyGroup = (): Group => ({HR:[],LR2:[],LR3:[],LR4:[]});
@@ -54,6 +55,7 @@ export function App() {
   const [slot,setSlot] = useState<Slot | null>(null);
   const [jobs,setJobs] = useState<Job[]>([]);
   const [refreshCount,setRefreshCount] = useState(0);
+  const [statisticsAllowed,setStatisticsAllowed] = useState(true);
   const [connection,setConnection] = useState("连接中");
   const [working,setWorking] = useState(false);
   const [conversion,setConversion] = useState(false);
@@ -89,7 +91,7 @@ export function App() {
     setError(value instanceof Error?value.message:String(value));
     if(value instanceof ApiError && ["unauthorized","lease_lost"].includes(value.code)) {
       setLeaseHealthy(false);
-      if(value.code==="unauthorized"){setImages({});cache.current.clear();}
+      if(value.code==="unauthorized"){setStatisticsAllowed(false);setImages({});cache.current.clear();}
     }
   }
   async function run(action:()=>Promise<void>) {
@@ -140,6 +142,7 @@ export function App() {
   function historyReplace() { window.history.replaceState(null,"",location.pathname+location.search); }
   useEffect(()=>{
     if(user) {
+      setStatisticsAllowed(true);
       void refreshLists().catch(onError);
       void refreshModels().catch(onError);
     }
@@ -362,7 +365,7 @@ export function App() {
     stream.onopen=()=>{setConnection("已连接");void sync();};
     stream.addEventListener("update",()=>void sync());
     stream.addEventListener("shutdown",()=>{cancelled=true;stream.close();clearInterval(poll);});
-    stream.addEventListener("revoked",()=>{setConnection("权限已失效");setLeaseHealthy(false);setError("分享已撤销或到期，请保留本地内容。");stream.close();cache.current.clear();setImages({});});
+    stream.addEventListener("revoked",()=>{setStatisticsAllowed(false);setConnection("权限已失效");setLeaseHealthy(false);setError("分享已撤销或到期，请保留本地内容。");stream.close();cache.current.clear();setImages({});});
     stream.onerror=()=>setConnection("连接中断，正在轮询");
     const poll=setInterval(()=>void sync(),5000);
     return()=>{cancelled=true;stream.close();clearInterval(poll);};
@@ -554,6 +557,7 @@ export function App() {
       </aside>
     } inspector={
       <aside className="inspector">
+        <DatasetStatisticsPanel key={JSON.stringify([user.session_id,dataset])} dataset={dataset} refresh={refreshCount} localPending={status!=="saved" || !!localRecovery} enabled={statisticsAllowed}/>
         <section className="panel"><h3>区域属性 <small>{selected.length ? "已选 "+selected.length : "未选择"}</small></h3>
           <p className="subtle">0 证据充分 · 1 证据模糊 · 2 证据不足</p>
           <div className="evidence-buttons">{[0,1,2].map(value=><button key={value} data-value={value} disabled={!editable||!selected.length} onClick={()=>setEvidence(value)}>{value}</button>)}</div>

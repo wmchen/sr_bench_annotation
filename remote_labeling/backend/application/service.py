@@ -17,6 +17,7 @@ from ..domain.rules import DomainError, completion, edit_group
 from ..infrastructure.datasets.source import contained, scan_dataset
 from ..ports import Store
 from .writeback import WritebackService
+from .statistics import StatisticsCache
 
 
 def encode(value: Any) -> str:
@@ -66,6 +67,7 @@ class AnnotationService:
         self.settings = settings
         self.store = store
         self.writeback = WritebackService(self)
+        self.statistics_cache = StatisticsCache()
 
     def initialize_owner(self) -> str | None:
         """Create a separate owner credential exactly once."""
@@ -393,6 +395,7 @@ class AnnotationService:
                 ),
             )
             if report["errors"]:
+                event(db, "dataset", dataset, None, {"status": "invalid"})
                 return {
                     "dataset": dataset,
                     "samples": len(report["samples"]),
@@ -493,6 +496,26 @@ class AnnotationService:
                     }
                 )
             return output
+
+    def statistics(self, session: str, dataset: str) -> dict:
+        """Read saved counts within the current authorization scope."""
+        with self.store.read() as db:
+            user = self.auth(db, session, dataset)
+            row = db.execute(
+                "SELECT * FROM datasets WHERE id=?", (dataset,)
+            ).fetchone()
+            if row is None:
+                raise DomainError("dataset", "未登记的数据集", 404)
+            sample = user["sample"] if user["role"] != "owner" else None
+            return {
+                "dataset": dataset,
+                "attribute": row["attribute"],
+                "status": row["status"],
+                "scope": "sample" if sample is not None else "dataset",
+                "import_version": row["import_version"],
+                "generated_at": time.time(),
+                **self.statistics_cache.aggregate(db, row, sample),
+            }
 
     def opening_selection(
         self, session: str, dataset: str, sample: str | None = None

@@ -119,6 +119,46 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset}/statistics": {
+      "get": {
+        "summary": "Statistics",
+        "description": "Read authorized counts without loading images or source files.",
+        "operationId": "statistics_api_v1_datasets__dataset__statistics_get",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetStatisticsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/datasets/{dataset}/scan": {
       "post": {
         "summary": "Scan",
@@ -1311,6 +1351,122 @@
         "title": "CommitRequest",
         "description": "Explicit acknowledgements distinguish warnings from hard validation."
       },
+      "DatasetStatisticsView": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "attribute": {
+            "type": "string",
+            "enum": [
+              "text",
+              "face"
+            ],
+            "title": "Attribute"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "scanning",
+              "invalid"
+            ],
+            "title": "Status"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "dataset",
+              "sample"
+            ],
+            "title": "Scope"
+          },
+          "import_version": {
+            "type": "integer",
+            "title": "Import Version"
+          },
+          "generated_at": {
+            "type": "number",
+            "title": "Generated At"
+          },
+          "sample_groups": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sample Groups"
+          },
+          "image_files": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Image Files"
+          },
+          "instances": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Instances"
+          },
+          "completed_instances": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed Instances"
+          },
+          "recoverability_assigned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Recoverability Assigned"
+          },
+          "recoverability_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Recoverability Total"
+          },
+          "complete_samples": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Complete Samples"
+          },
+          "pending_samples": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pending Samples"
+          },
+          "by_variant": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/VariantStatisticsView"
+            },
+            "propertyNames": {
+              "enum": [
+                "HR",
+                "LR2",
+                "LR3",
+                "LR4"
+              ]
+            },
+            "type": "object",
+            "title": "By Variant"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "attribute",
+          "status",
+          "scope",
+          "import_version",
+          "generated_at",
+          "sample_groups",
+          "image_files",
+          "instances",
+          "completed_instances",
+          "recoverability_assigned",
+          "recoverability_total",
+          "complete_samples",
+          "pending_samples",
+          "by_variant"
+        ],
+        "title": "DatasetStatisticsView",
+        "description": "Saved draft counts and formal progress in an authorized scope."
+      },
       "DimensionsView": {
         "properties": {
           "HR": {
@@ -2491,6 +2647,51 @@
         ],
         "title": "ValidationView",
         "description": "Hard completeness failures and advisory monotonicity findings."
+      },
+      "VariantStatisticsView": {
+        "properties": {
+          "sufficient": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sufficient"
+          },
+          "ambiguous": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ambiguous"
+          },
+          "insufficient": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Insufficient"
+          },
+          "unset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unset"
+          },
+          "assigned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Assigned"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sufficient",
+          "ambiguous",
+          "insufficient",
+          "unset",
+          "assigned",
+          "total"
+        ],
+        "title": "VariantStatisticsView",
+        "description": "Evidence counts for one image variant."
       }
     }
   }

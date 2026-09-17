@@ -32,6 +32,7 @@ from .api.schemas import (
     JobView,
     ModelView,
     OpeningSelectionView,
+    DatasetStatisticsView,
 )
 from .application.exports import ExportService
 from .application.inference import InferenceService
@@ -263,6 +264,14 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get(prefix + "/datasets")
     def datasets(request: Request) -> list[dict]:
         return service.datasets(session(request))
+
+    @app.get(
+        prefix + "/datasets/{dataset}/statistics",
+        response_model=DatasetStatisticsView,
+    )
+    def statistics(request: Request, dataset: str) -> dict:
+        """Read authorized counts without loading images or source files."""
+        return service.statistics(session(request), dataset)
 
     @app.post(prefix + "/datasets/{dataset}/scan", status_code=202)
     def scan(

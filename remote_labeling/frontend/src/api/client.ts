@@ -8,6 +8,7 @@ export type Variant = typeof variants[number];
 export type Point = [number, number];
 export type Region = components["schemas"]["RegionView"];
 export type Group = components["schemas"]["GroupView"];
+export type DatasetStatistics = components["schemas"]["DatasetStatisticsView"];
 export type OpeningSelection = components["schemas"]["OpeningSelectionView"];
 export type Sample = components["schemas"]["SampleView"];
 export type Session = components["schemas"]["SessionView"];

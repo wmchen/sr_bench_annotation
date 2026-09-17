@@ -55,3 +55,17 @@ body.sidebar-resizing,body.sidebar-resizing *{cursor:col-resize!important;user-s
 .pane header span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pane header strong,.pane header button{flex-shrink:0}
 .sample-toolbar>div{min-width:0;flex-wrap:wrap}
+
+.dataset-statistics{font-size:11px;line-height:1.35;font-variant-numeric:tabular-nums;padding:10px 0}
+.dataset-statistics h3{margin:0 0 3px}.statistics-scope{color:#8fa4bd;font-size:10px}
+.statistics-counts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px 12px;margin:7px 0}
+.statistics-counts dt{color:#9aadc4;font-size:10px}.statistics-counts dd{font-size:18px;line-height:1.25;margin:2px 0 0;overflow-wrap:anywhere;color:#e0ecfa}
+.statistics-progress{margin:7px 0}.statistics-progress>div,.statistics-pending,.statistics-variant>div:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.statistics-progress>div+div{margin-top:3px}.statistics-progress progress{flex:1;min-width:0;width:0;height:5px;margin:0;accent-color:#6594ce}.statistics-progress small{font-size:10px;min-width:40px;text-align:right;color:#9aadc4}
+.statistics-pending{margin:7px 0}.statistics-status{display:flex;flex-direction:column;gap:3px;font-size:10px;color:#8fa4bd;margin:6px 0}
+.dataset-statistics .statistics-notice{color:#ffd166;font-size:10px;margin:4px 0}.statistics-details summary{cursor:pointer;color:#b8d6fb;padding:3px 0}.statistics-details summary:focus-visible{outline:2px solid #6594ce;outline-offset:2px}
+.statistics-variant{padding:9px 0 3px;border-top:1px solid #2b3a4e;margin-top:6px}.statistics-variant>div:first-child span{font-size:10px;color:#9aadc4}
+.statistics-distribution{display:flex;height:5px;overflow:hidden;border-radius:3px;background:#3d4c60;margin:6px 0}
+.statistics-variant dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 12px;margin:0;font-size:10px}.statistics-variant dl>div{display:flex;justify-content:space-between;gap:3px}.statistics-variant dd{margin:0;overflow-wrap:anywhere}.statistics-variant dt{color:#9aadc4}.statistics-variant i{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:4px}
+.evidence-sufficient{background:#38d9a9}.evidence-ambiguous{background:#ffd166}.evidence-insufficient{background:#ff7b86}.evidence-unset{background:#8292a8}
+.statistics-error{display:flex;align-items:center;justify-content:space-between;gap:5px;color:#ffd166;font-size:10px;margin-top:6px}.statistics-error button{flex-shrink:0}

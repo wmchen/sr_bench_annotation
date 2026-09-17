@@ -154,6 +154,37 @@ class OccupancyView(BaseModel):
     expires: float
 
 
+class VariantStatisticsView(BaseModel):
+    """Evidence counts for one image variant."""
+
+    sufficient: int = Field(ge=0)
+    ambiguous: int = Field(ge=0)
+    insufficient: int = Field(ge=0)
+    unset: int = Field(ge=0)
+    assigned: int = Field(ge=0)
+    total: int = Field(ge=0)
+
+
+class DatasetStatisticsView(BaseModel):
+    """Saved draft counts and formal progress in an authorized scope."""
+
+    dataset: str
+    attribute: Literal["text", "face"]
+    status: Literal["ready", "scanning", "invalid"]
+    scope: Literal["dataset", "sample"]
+    import_version: int
+    generated_at: float
+    sample_groups: int = Field(ge=0)
+    image_files: int = Field(ge=0)
+    instances: int = Field(ge=0)
+    completed_instances: int = Field(ge=0)
+    recoverability_assigned: int = Field(ge=0)
+    recoverability_total: int = Field(ge=0)
+    complete_samples: int = Field(ge=0)
+    pending_samples: int = Field(ge=0)
+    by_variant: dict[Literal["HR", "LR2", "LR3", "LR4"], VariantStatisticsView]
+
+
 class OpeningSelectionView(BaseModel):
     """Authorized opening target and its index in the unfiltered list."""
 

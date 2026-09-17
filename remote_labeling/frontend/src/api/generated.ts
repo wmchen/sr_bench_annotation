@@ -60,6 +60,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset}/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics
+         * @description Read authorized counts without loading images or source files.
+         */
+        get: operations["statistics_api_v1_datasets__dataset__statistics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset}/scan": {
         parameters: {
             query?: never;
@@ -462,6 +482,53 @@ export interface components {
              * @default false
              */
             confirm_monotonic: boolean;
+        };
+        /**
+         * DatasetStatisticsView
+         * @description Saved draft counts and formal progress in an authorized scope.
+         */
+        DatasetStatisticsView: {
+            /** Dataset */
+            dataset: string;
+            /**
+             * Attribute
+             * @enum {string}
+             */
+            attribute: "text" | "face";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "scanning" | "invalid";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "dataset" | "sample";
+            /** Import Version */
+            import_version: number;
+            /** Generated At */
+            generated_at: number;
+            /** Sample Groups */
+            sample_groups: number;
+            /** Image Files */
+            image_files: number;
+            /** Instances */
+            instances: number;
+            /** Completed Instances */
+            completed_instances: number;
+            /** Recoverability Assigned */
+            recoverability_assigned: number;
+            /** Recoverability Total */
+            recoverability_total: number;
+            /** Complete Samples */
+            complete_samples: number;
+            /** Pending Samples */
+            pending_samples: number;
+            /** By Variant */
+            by_variant: {
+                [key: string]: components["schemas"]["VariantStatisticsView"];
+            };
         };
         /**
          * DimensionsView
@@ -913,6 +980,24 @@ export interface components {
             /** Empty */
             empty: boolean;
         };
+        /**
+         * VariantStatisticsView
+         * @description Evidence counts for one image variant.
+         */
+        VariantStatisticsView: {
+            /** Sufficient */
+            sufficient: number;
+            /** Ambiguous */
+            ambiguous: number;
+            /** Insufficient */
+            insufficient: number;
+            /** Unset */
+            unset: number;
+            /** Assigned */
+            assigned: number;
+            /** Total */
+            total: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -1035,6 +1120,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    statistics_api_v1_datasets__dataset__statistics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetStatisticsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
