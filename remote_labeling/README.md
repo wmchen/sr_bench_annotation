@@ -132,8 +132,8 @@ download_timeout_seconds: 30
 download_retries: 3
 # 可选，只影响服务器上的模型下载；支持带用户名/密码的代理。
 download_proxies:
-  http: "http://username:password@proxy.example.com:35100"
-  https: "http://username:password@proxy.example.com:35100"
+  http: "YOUR_PROXY_ADDRESS"
+  https: "YOUR_PROXY_ADDRESS"
 ~~~
 
 下载发生在服务器，因此代理地址必须能从服务器访问。将示例代理替换为实际地址，
