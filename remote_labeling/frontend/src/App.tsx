@@ -10,6 +10,7 @@ import { recovery, type Recovery } from "./state/recovery";
 import { ImageCache } from "./state/imageCache";
 import { needsWriteback } from "./features/workspace/sourceSync";
 import { SaveQueue, type SaveStatus } from "./state/saveQueue";
+import { WorkspaceLayout } from "./features/layout/WorkspaceLayout";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
 import { InferencePanel } from "./features/inference/InferencePanel";
 import { SharingPanel } from "./features/sharing/SharingPanel";
@@ -534,7 +535,7 @@ export function App() {
       });}}>重新读取服务器版本</button>}
       <button onClick={()=>setError("")} aria-label="关闭提示">×</button>
     </div>}
-    <div className="body">
+    <WorkspaceLayout navigation={
       <aside className="navigation">
         <span className="eyebrow">数据集</span>
         <select aria-label="数据集" value={dataset} disabled={working} onChange={e=>{const next=e.target.value;void run(async()=>{resetOpening();await release();setSample(null);setGroup(emptyGroup());setSelected([]);setLocalRecovery(null);setItems([]);setTotal(0);setDataset(next);setPage(0);setSearch("");window.history.replaceState(null,"",location.pathname+"?dataset="+encodeURIComponent(next));});}}>
@@ -551,6 +552,28 @@ export function App() {
         </button>)}</div>
         <div className="button-row pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(total/50))}</span><button disabled={(page+1)*50>=total} onClick={()=>setPage(p=>p+1)}>下一页</button></div>
       </aside>
+    } inspector={
+      <aside className="inspector">
+        <section className="panel"><h3>区域属性 <small>{selected.length ? "已选 "+selected.length : "未选择"}</small></h3>
+          <p className="subtle">0 证据充分 · 1 证据模糊 · 2 证据不足</p>
+          <div className="evidence-buttons">{[0,1,2].map(value=><button key={value} data-value={value} disabled={!editable||!selected.length} onClick={()=>setEvidence(value)}>{value}</button>)}</div>
+          {selectedRegion && <><span className="subtle">当前倍率 {active} · 可恢复度 {group[active].find(r=>r.region_id===selectedRegion.region_id)?.recoverable??"未设置"}</span>
+            {sample?.attribute==="text" && <label>OCR 真值<textarea aria-label="OCR 真值" value={selectedRegion.description} readOnly={!editable||active!=="HR"||selected.length!==1}
+              onChange={e=>change(syncHR(group.HR.map(r=>r.region_id===selectedRegion.region_id?{...r,description:e.target.value}:r),group,sample.dimensions))}/></label>}
+            {sample?.attribute==="text" && <button disabled={!editable||active!=="HR"||selected.length!==1||!!selectedRegion.locked} onClick={()=>{
+              if(selectedRegion.shape_type==="rectangle")setConversion(true);
+              else change(syncHR(group.HR.map(r=>r===selectedRegion?convert(r,"rectangle"):r),group,sample.dimensions));
+            }}>转换为{selectedRegion.shape_type==="rectangle"?"四边形":"矩形"}</button>}
+          </>}
+          <div className="region-list">{group.HR.map((r,i)=><button key={r.region_id} className={selected.includes(r.region_id)?"selected":""} onClick={e=>setSelected(e.shiftKey?selected.includes(r.region_id)?selected.filter(id=>id!==r.region_id):[...selected,r.region_id]:[r.region_id])}>
+            <span>{i+1}. {r.description||r.label}</span><small>{variants.map(v=>group[v].find(other=>other.region_id===r.region_id)?.recoverable??"—").join(" / ")}</small>
+          </button>)}</div>
+        </section>
+        {user.role!=="view" && <InferencePanel slot={slot} jobs={jobs} editable={editable} attribute={sample?.attribute} selected={selected} empty={!group.HR.length}
+          onRefresh={refreshModels} onInfer={infer} onError={onError}/>}
+        {user.role==="owner" && <SharingPanel dataset={dataset} sample={sample?.id} refresh={refreshCount} onError={onError}/>}
+      </aside>
+    }>
       <main className="editor">
         {opening==="loading" && <p role="status">正在打开样本…</p>}
         {opening==="failed" && <div role="alert" className="error-banner"><span>{openingError}</span><button disabled={working} onClick={()=>void openInitial()}>重试打开</button></div>}
@@ -593,27 +616,7 @@ export function App() {
           <footer className="editor-footer"><span>滚轮缩放 · 框外左键平移 · 空格 + 左键强制平移 · Shift 多选 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
         </>}
       </main>
-      <aside className="inspector">
-        <section className="panel"><h3>区域属性 <small>{selected.length ? "已选 "+selected.length : "未选择"}</small></h3>
-          <p className="subtle">0 证据充分 · 1 证据模糊 · 2 证据不足</p>
-          <div className="evidence-buttons">{[0,1,2].map(value=><button key={value} data-value={value} disabled={!editable||!selected.length} onClick={()=>setEvidence(value)}>{value}</button>)}</div>
-          {selectedRegion && <><span className="subtle">当前倍率 {active} · 可恢复度 {group[active].find(r=>r.region_id===selectedRegion.region_id)?.recoverable??"未设置"}</span>
-            {sample?.attribute==="text" && <label>OCR 真值<textarea aria-label="OCR 真值" value={selectedRegion.description} readOnly={!editable||active!=="HR"||selected.length!==1}
-              onChange={e=>change(syncHR(group.HR.map(r=>r.region_id===selectedRegion.region_id?{...r,description:e.target.value}:r),group,sample.dimensions))}/></label>}
-            {sample?.attribute==="text" && <button disabled={!editable||active!=="HR"||selected.length!==1||!!selectedRegion.locked} onClick={()=>{
-              if(selectedRegion.shape_type==="rectangle")setConversion(true);
-              else change(syncHR(group.HR.map(r=>r===selectedRegion?convert(r,"rectangle"):r),group,sample.dimensions));
-            }}>转换为{selectedRegion.shape_type==="rectangle"?"四边形":"矩形"}</button>}
-          </>}
-          <div className="region-list">{group.HR.map((r,i)=><button key={r.region_id} className={selected.includes(r.region_id)?"selected":""} onClick={e=>setSelected(e.shiftKey?selected.includes(r.region_id)?selected.filter(id=>id!==r.region_id):[...selected,r.region_id]:[r.region_id])}>
-            <span>{i+1}. {r.description||r.label}</span><small>{variants.map(v=>group[v].find(other=>other.region_id===r.region_id)?.recoverable??"—").join(" / ")}</small>
-          </button>)}</div>
-        </section>
-        {user.role!=="view" && <InferencePanel slot={slot} jobs={jobs} editable={editable} attribute={sample?.attribute} selected={selected} empty={!group.HR.length}
-          onRefresh={refreshModels} onInfer={infer} onError={onError}/>}
-        {user.role==="owner" && <SharingPanel dataset={dataset} sample={sample?.id} refresh={refreshCount} onError={onError}/>}
-      </aside>
-    </div>
+    </WorkspaceLayout>
     {conversion && <div className="modal-backdrop"><section role="dialog" aria-modal="true" className="modal">
       <h2>矩形转四边形</h2><label>起始顶点<select value={corner} onChange={e=>setCorner(Number(e.target.value))}>
         {["左上","右上","右下","左下"].map((name,i)=><option value={i} key={name}>{name}</option>)}
