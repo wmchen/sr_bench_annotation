@@ -317,7 +317,7 @@ export function App() {
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();undo(event.shiftKey);}
       else if((event.ctrlKey||event.metaKey)&&event.key==="s"){event.preventDefault();void queue.current?.flush().catch(onError);}
       else if(["0","1","2"].includes(event.key)){event.preventDefault();setEvidence(Number(event.key));}
-      else if(event.key==="Delete" && editable)remove();
+      else if(["Delete","Backspace"].includes(event.key) && editable){event.preventDefault();remove();}
       else if(event.key.toLowerCase()==="f")setFocus(f=>f+1);
       else if(event.key==="Escape"){setMode("select");setSelected([]);}
       else if(event.key.toLowerCase()==="r" && editable)setMode("rectangle");
@@ -453,7 +453,7 @@ export function App() {
             <button onClick={()=>{if(window.confirm("放弃本地恢复副本？"))void recovery(recoveryKey(sample),null).then(()=>setLocalRecovery(null));}}>放弃副本</button>
           </div>}
           <div className="drawing-toolbar">
-            {(["select","pan","rectangle","quadrilateral"] as Mode[]).map((m,i)=><button key={m} className={mode===m?"active":""} disabled={i>1&&(!editable || (m==="quadrilateral"&&sample.attribute==="face"))} onClick={()=>setMode(m)}>{["选择","平移","矩形 R","四边形 Q"][i]}</button>)}
+            {(["rectangle","quadrilateral"] as Mode[]).map((m,i)=><button key={m} className={mode===m?"active":""} disabled={!editable || (m==="quadrilateral"&&sample.attribute==="face")} aria-pressed={mode===m} onClick={()=>setMode(current=>current===m?"select":m)}>{["矩形 R","四边形 Q"][i]}</button>)}
             <span className="separator"/><button disabled={!editable||!history.current.past.length} onClick={()=>undo()}>撤销</button><button disabled={!editable||!history.current.future.length} onClick={()=>undo(true)}>重做</button>
             <button disabled={!selected.length} onClick={()=>setFocus(f=>f+1)}>聚焦 F</button>
             <button disabled={!editable||active!=="HR"||!selected.length} onClick={remove}>删除</button>
@@ -462,7 +462,7 @@ export function App() {
           {!sample.formal && !lease && <div className="draft-notice">尚无正式结果，当前展示已保存草稿。</div>}
           <Workspace sample={sample} group={group} images={images} editable={editable} selected={selected} mode={mode} active={active} focus={focus}
             onSelect={setSelected} onActive={setActive} onChange={change}/>
-          <footer className="editor-footer"><span>滚轮缩放 · 右键平移 · Shift 多选 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
+          <footer className="editor-footer"><span>滚轮缩放 · 框外左键平移 · 空格 + 左键强制平移 · Shift 多选 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
         </>}
       </main>
       <aside className="inspector">

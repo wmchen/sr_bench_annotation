@@ -135,7 +135,7 @@ test("geometry dragging and vertex edits are single undoable domain operations",
   await expect(page.locator(".save-state")).toHaveText("已保存");
   const current=()=>page.evaluate(async(name)=>{const r=await fetch("/api/v1/datasets/text/samples/"+name);return (await r.json()).draft.HR[0];},name);
   const before=await current();
-  await page.getByRole("button",{name:"选择",exact:true}).click();
+  await page.getByRole("button",{name:"矩形 R",exact:true}).click();
   const scale=Math.min(box.width/800,box.height/600)*.94;
   await page.mouse.move(box.x+box.width*.475,box.y+box.height*.45);
   await page.mouse.down();await page.mouse.move(box.x+box.width*.475+25,box.y+box.height*.45+15,{steps:8});await page.mouse.up();

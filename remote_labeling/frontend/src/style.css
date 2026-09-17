@@ -1,5 +1,5 @@
 :root{font-family:Inter,"Noto Sans SC","Microsoft YaHei",sans-serif;color:#dce6f4;background:#101722;font-synthesis:none;font-size:13px;color-scheme:dark}
-*{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button{background:#263346;border:1px solid #3a4b62;color:#e5eefb;border-radius:5px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+*{box-sizing:border-box;cursor:default}body{margin:0}button,input,select,textarea{font:inherit}button{background:#263346;border:1px solid #3a4b62;color:#e5eefb;border-radius:5px;padding:6px 10px;cursor:default;white-space:nowrap}
 button:hover:not(:disabled){background:#344860;border-color:#7091b8}button:disabled{opacity:.4;cursor:default}button.active,button.selected{background:#244663;border-color:#73b5e6}.primary{background:#346ec2;border-color:#528be0;color:white}.primary:hover:not(:disabled){background:#4683da}
 input,select,textarea{border:1px solid #37485e;border-radius:5px;background:#111d2c;color:#e0e8f5;padding:7px;width:100%;outline:none}input:focus,select:focus,textarea:focus{border-color:#7ca9ed;box-shadow:0 0 0 2px #528be033}textarea{resize:vertical;min-height:74px}label{display:flex;flex-direction:column;gap:6px;margin:10px 0;color:#b8c9de}a{color:#94c7ff;text-decoration:none}a:hover{text-decoration:underline}
 h1,h2,h3,p{margin-top:0}h3{font-size:13px;letter-spacing:.02em;margin-bottom:10px}small{font-size:11px}.subtle{color:#91a3ba;font-size:12px;line-height:1.6}.eyebrow{display:block;font-size:10px;letter-spacing:.15em;color:#7f9cbd;margin-bottom:12px}
@@ -16,3 +16,5 @@ h1,h2,h3,p{margin-top:0}h3{font-size:13px;letter-spacing:.02em;margin-bottom:10p
 @media(max-width:1250px){.navigation{width:170px}.inspector{width:235px}.editor{padding:8px}.pane header{gap:4px}.pane header span{font-size:9px}.sample-toolbar button{font-size:11px;padding:5px 7px}.editor-footer{font-size:9px}}
 
 .download-progress{padding:10px;margin:8px 0;background:#20364d;border-radius:5px;overflow-wrap:anywhere}.download-progress p{font-size:11px}.download-progress progress{margin:3px 0 8px}.download-progress small{color:#9bb6d1}
+
+.canvas-holder *{cursor:inherit}.canvas-holder:focus{outline:none}
