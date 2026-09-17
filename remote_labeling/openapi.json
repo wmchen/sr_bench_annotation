@@ -160,6 +160,62 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset}/opening-selection": {
+      "get": {
+        "summary": "Opening Selection",
+        "description": "Resolve a readable opening target without acquiring a lease.",
+        "operationId": "opening_selection_api_v1_datasets__dataset__opening_selection_get",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sample"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningSelectionView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/datasets/{dataset}/samples": {
       "get": {
         "summary": "Samples",
@@ -1756,6 +1812,44 @@
         ],
         "title": "OccupancyView",
         "description": "Public lease status without writable lease credentials."
+      },
+      "OpeningSelectionView": {
+        "properties": {
+          "sample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "pending_draft": {
+            "type": "boolean",
+            "title": "Pending Draft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sample",
+          "index",
+          "pending_draft"
+        ],
+        "title": "OpeningSelectionView",
+        "description": "Authorized opening target and its index in the unfiltered list."
       },
       "RegionView": {
         "properties": {

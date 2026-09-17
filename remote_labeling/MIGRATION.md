@@ -47,3 +47,18 @@ worker 不连接数据库；模型结果统一经过应用层的事务检查。
 来源沿用桌面 auto_labeling YAML 的 v3.0.0 发布地址及 ModelScope 镜像规则。
 PPOCR v6 字典复制自桌面 configs/ppocr/ppocrv6_dict.txt，随独立包分发，保留同一词表。
 下载器使用标准库，不引入桌面 Model 类或 Qt；显式本地 files 配置继续有效。
+
+## 首图选择
+
+`backend/domain/opening.py` 沿用桌面 `RealISRDataset.opening_selection()` 的
+“有效草稿 → 未完成 → 第一张”优先级，并以桌面规则用例做兼容性对照。
+服务端从同一 SQLite 读快照完成鉴权、可访问范围过滤和全数据集选择，
+不实例化桌面管理器，也不读取或清理源草稿文件。
+
+新增只读 `GET /api/v1/datasets/{dataset}/opening-selection`，可选 `sample`
+用于链接定位；返回 `sample`、可访问序列的零基 `index` 和 `pending_draft`。
+空数据集返回 `null`、`null`、`false`；明确指定的无效样本返回现有 403/404 错误。
+
+有正式结果时，解析后的草稿与正式内容不同才算待恢复；无正式结果时，四倍率
+任一非空或 `revision > 0` 即算待恢复。无法区分的旧版导入空草稿按未完成处理。
+不新增状态字段、不迁移数据库；冗余快照保留，前端不复制桌面清理提示。

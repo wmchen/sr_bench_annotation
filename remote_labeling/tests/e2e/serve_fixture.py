@@ -22,7 +22,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="realisr-browser-") as directory:
         root = Path(directory)
         datasets = {}
-        for task in ("text", "face"):
+        for task in ("text", "face", "opening"):
             source = root / task
             for variant, factor in (
                 ("HR", 1),
@@ -31,7 +31,7 @@ def main() -> None:
                 ("LR4", 4),
             ):
                 (source / variant).mkdir(parents=True)
-                for sample in range(12):
+                for sample in range(55 if task == "opening" else 12):
                     image = Image.new(
                         "RGB", (800 // factor, 600 // factor), "#c7d0d4"
                     )
@@ -105,7 +105,9 @@ def main() -> None:
                             }
                         )
                     )
-            datasets[task] = DatasetConfig(root=source, attribute=task)
+            datasets[task] = DatasetConfig(
+                root=source, attribute="face" if task == "face" else "text"
+            )
         settings = Settings(
             state_dir=root / "state",
             export_dir=root / "exports",
@@ -123,6 +125,38 @@ def main() -> None:
         token = service.initialize_owner()
         for key in datasets:
             service.scan(key)
+        # Dedicated late-page draft keeps navigation tests independent of edits.
+        from remote_labeling.backend.domain.rules import edit_group
+        from remote_labeling.backend.application.service import encode
+
+        with store.transaction() as db:
+            row = db.execute(
+                "SELECT dimensions FROM samples WHERE dataset='opening' LIMIT 1"
+            ).fetchone()
+            formal = edit_group(
+                [
+                    {
+                        "region_id": "opening-region",
+                        "label": "text",
+                        "description": "正式文字",
+                        "shape_type": "rectangle",
+                        "points": [[80, 100], [500, 250]],
+                        "recoverable": 0,
+                    }
+                ],
+                {},
+                json.loads(row["dimensions"]),
+                "text",
+                {v: {"opening-region": 1} for v in ("LR2", "LR3", "LR4")},
+            )
+            draft = json.loads(encode(formal))
+            for records in draft.values():
+                records[0]["description"] = "待恢复草稿"
+            db.execute(
+                "UPDATE samples SET formal=?,draft=?,revision=1,modified=1 "
+                "WHERE dataset='opening' AND id='000052.png'",
+                (encode(formal), encode(draft)),
+            )
         credential = Path(
             os.environ.get("REALISR_E2E_TOKEN", "/tmp/realisr-e2e-token")
         )

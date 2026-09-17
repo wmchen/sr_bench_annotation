@@ -30,6 +30,7 @@ from .api.schemas import (
     SlotView,
     JobView,
     ModelView,
+    OpeningSelectionView,
 )
 from .application.exports import ExportService
 from .application.inference import InferenceService
@@ -268,6 +269,16 @@ def create_app(settings: Settings) -> FastAPI:
         service.reserve_scan(session(request), dataset)
         background.add_task(service.finish_scan, dataset)
         return {"dataset": dataset, "state": "scanning"}
+
+    @app.get(
+        prefix + "/datasets/{dataset}/opening-selection",
+        response_model=OpeningSelectionView,
+    )
+    def opening_selection(
+        request: Request, dataset: str, sample: str | None = None
+    ) -> dict:
+        """Resolve a readable opening target without acquiring a lease."""
+        return service.opening_selection(session(request), dataset, sample)
 
     @app.get(prefix + "/datasets/{dataset}/samples")
     def samples(

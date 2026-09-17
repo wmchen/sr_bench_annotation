@@ -147,6 +147,14 @@ class OccupancyView(BaseModel):
     expires: float
 
 
+class OpeningSelectionView(BaseModel):
+    """Authorized opening target and its index in the unfiltered list."""
+
+    sample: str | None
+    index: int | None
+    pending_draft: bool
+
+
 class SampleView(BaseModel):
     """Public saved state; private source paths never cross this interface."""
 

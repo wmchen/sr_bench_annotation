@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   api, ApiError, samplePath, variants, type DraftRequest, type CommitRequest, type InferenceRequest, type Dataset, type Group, type Job,
   type Lease, type ModelInfo, type Sample, type SampleItem, type Session,
-  type Slot, type Variant,
+  type Slot, type Variant, type OpeningSelection,
 } from "./api/client";
 import { convert, evidence, recoverability, syncHR, typing } from "./state/domain";
 import { recovery, type Recovery } from "./state/recovery";
@@ -26,6 +26,9 @@ export function App() {
   const [datasets,setDatasets] = useState<Dataset[]>([]);
   const [dataset,setDataset] = useState(new URLSearchParams(location.search).get("dataset") ?? "");
   const initialSample = useRef(new URLSearchParams(location.search).get("sample"));
+  const openingAttempt = useRef<{key:string;target:string|null} | null>(null);
+  const [opening,setOpening] = useState<"idle"|"loading"|"empty"|"failed">("idle");
+  const [openingError,setOpeningError] = useState("");
   const [items,setItems] = useState<SampleItem[]>([]);
   const [search,setSearch] = useState("");
   const [page,setPage] = useState(0);
@@ -44,6 +47,7 @@ export function App() {
   const [status,setStatus] = useState<SaveStatus>("saved");
   const [savedDraft,setSavedDraft] = useState(false);
   const [localRecovery,setLocalRecovery] = useState<Recovery | null>(null);
+  const [imageNavigation,setImageNavigation] = useState(0);
   const [images,setImages] = useState<Partial<Record<Variant,ImageBitmap>>>({});
   const [slot,setSlot] = useState<Slot | null>(null);
   const [jobs,setJobs] = useState<Job[]>([]);
@@ -59,8 +63,10 @@ export function App() {
   const history = useRef<{past:Group[];future:Group[]}>({past:[],future:[]});
   const navigation = useRef(0);
   const renewalDeadline = useRef(0);
+  const releasing = useRef<Promise<void> | null>(null);
 
-  useEffect(()=>()=>{queue.current?.dispose();cache.current.clear();},[]);
+  useEffect(()=>()=>{navigation.current++;queue.current?.dispose();cache.current.clear();},[]);
+  useEffect(()=>()=>{navigation.current++;openingAttempt.current=null;},[user?.session_id,dataset]);
 
   function setSample(value: Sample | null) {
     const old=sampleRef.current;
@@ -134,17 +140,47 @@ export function App() {
     const timer=setTimeout(()=>{
       api<{items:SampleItem[];total:number}>("/datasets/"+encodeURIComponent(dataset)+"/samples?limit=50&offset="+page*50+"&search="+encodeURIComponent(search))
         .then(result=>{if(!cancelled){setItems(result.items);setTotal(result.total);}})
-        .catch(onError);
+        .catch(value=>{if(!cancelled)onError(value);});
     },150);
     return()=>{cancelled=true;clearTimeout(timer);};
   },[dataset,search,page,refreshCount,user]);
 
+  const datasetStatus=datasets.find(d=>d.id===dataset)?.status;
   useEffect(()=>{
-    if(user && dataset && datasets.some(d=>d.id===dataset) && initialSample.current){
-      const initial=initialSample.current;initialSample.current=null;
-      void run(()=>openSample(initial));
-    }
-  },[user,dataset,datasets]);
+    if(!user || !dataset || !datasetStatus || datasetStatus==="scanning")return;
+    const key=JSON.stringify([user.session_id,dataset]);
+    if(openingAttempt.current?.key===key)return;
+    openingAttempt.current={key,target:initialSample.current};
+    initialSample.current=null;
+    void openInitial();
+  },[user?.session_id,dataset,datasetStatus]);
+
+  /** Select once per dataset entry; list and event refreshes do not navigate. */
+  async function openInitial() {
+    const target=openingAttempt.current?.target;
+    const request=++navigation.current;
+    setOpening("loading");setOpeningError("");
+    try {
+      const suffix=target==null?"":"?sample="+encodeURIComponent(target);
+      const selection=await api<OpeningSelection>("/datasets/"+encodeURIComponent(dataset)+"/opening-selection"+suffix);
+      if(request!==navigation.current)return;
+      if(selection.sample===null){setOpening("empty");return;}
+      await release();
+      if(request!==navigation.current)return;
+      await loadSample(dataset,selection.sample,request,selection.pending_draft,selection.index);
+    } catch(value) { openingFailed(value,request); }
+  }
+
+  function openingFailed(value:unknown,request:number) {
+    if(request!==navigation.current)return;
+    setOpening("failed");
+    setOpeningError(value instanceof Error?value.message:String(value));
+  }
+
+  function resetOpening() {
+    navigation.current++;openingAttempt.current=null;initialSample.current=null;
+    setOpening("idle");setOpeningError("");
+  }
 
   function installQueue(current:Sample, currentLease:Lease) {
     queue.current?.dispose();
@@ -165,44 +201,70 @@ export function App() {
     );
   }
   async function release() {
-    const current=sampleRef.current,currentLease=leaseRef.current;
+    if(releasing.current)return releasing.current;
+    const current=sampleRef.current,currentLease=leaseRef.current,currentQueue=queue.current;
     if(!currentLease || !current)return;
-    await queue.current?.flush();
-    await api(samplePath(current.dataset,current.id)+"/lease","DELETE",{tab_id:tab.current,lease_id:currentLease.id});
-    queue.current?.dispose();queue.current=null;
-    setLease(null);setLeaseHealthy(true);
+    const pending=(async()=>{
+      await currentQueue?.flush();
+      await api(samplePath(current.dataset,current.id)+"/lease","DELETE",{tab_id:tab.current,lease_id:currentLease.id});
+      if(leaseRef.current?.id!==currentLease.id)return;
+      currentQueue?.dispose();queue.current=null;
+      setLease(null);setLeaseHealthy(true);
+    })();
+    releasing.current=pending;
+    try { await pending; } finally { if(releasing.current===pending)releasing.current=null; }
   }
+  /** Open a user-selected sample and supersede any pending automatic choice. */
   async function openSample(id:string) {
-    await release();
     const request=++navigation.current;
-    const result=await api<Sample>(samplePath(dataset,id));
+    openingAttempt.current={key:JSON.stringify([user?.session_id,dataset]),target:id};
+    setOpening("loading");setOpeningError("");
+    try {
+      await release();
+      if(request!==navigation.current)return;
+      await loadSample(dataset,id,request);
+    } catch(value) { openingFailed(value,request); }
+  }
+
+  /** Apply detail and local recovery only while this navigation is current. */
+  async function loadSample(datasetId:string,id:string,request:number,preferDraft=false,index:number|null=null) {
+    const result=await api<Sample>(samplePath(datasetId,id));
+    if(request!==navigation.current)return;
+    const local=await recovery(recoveryKey(result)).catch(()=>undefined);
     if(request!==navigation.current)return;
     window.history.replaceState(null,"",location.pathname+"?dataset="+encodeURIComponent(result.dataset)+"&sample="+encodeURIComponent(result.id));
-    setSample(result);setGroup(result.formal ?? result.draft);
-    setSavedDraft(result.formal===null);setSelected([]);setMode("select");setActive("HR");
-    setStatus("saved");setLocalRecovery(null);
+    const showDraft=preferDraft || result.formal===null;
+    setSample(result);setGroup(showDraft?result.draft:result.formal!);
+    setSavedDraft(showDraft);setSelected([]);setMode("select");setActive("HR");
+    setStatus("saved");
+    setLocalRecovery(local && JSON.stringify(local.group)!==JSON.stringify(result.draft)?local:null);
     history.current={past:[],future:[]};
-    const local=await recovery(recoveryKey(result)).catch(()=>undefined);
-    if(local && JSON.stringify(local.group)!==JSON.stringify(result.draft))setLocalRecovery(local);
+    if(index!==null){setSearch("");setPage(Math.floor(index/50));}
+    if(openingAttempt.current)openingAttempt.current.target=result.id;
+    setImageNavigation(request);
   }
   useEffect(()=>{
     if(!sample)return;
     let cancelled=false;
-    const current=sample;
+    const current=sample,request=imageNavigation;
     cache.current.pin(current);
     void Promise.all(variants.map(async v=>{
       const bitmap=await cache.current.load(current,v);
-      if(!cancelled && bitmap)setImages(previous=>({...previous,[v]:bitmap}));
-    })).then(async()=>{
-      if(cancelled)return;
-      const next=items[items.findIndex(i=>i.id===current.id)+1];
+      if(!cancelled && request===navigation.current && bitmap)setImages(previous=>({...previous,[v]:bitmap}));
+    })).then(()=>{
+      if(cancelled || request!==navigation.current)return;
+      setOpening("idle");
+      const position=items.findIndex(i=>i.id===current.id);
+      const next=position>=0?items[position+1]:undefined;
       if(next){
-        const metadata=await api<Sample>(samplePath(current.dataset,next.id));
-        if(!cancelled)await Promise.all(variants.map(v=>cache.current.load(metadata,v,true)));
+        // Speculative loading must not turn a successful opening into an error.
+        void api<Sample>(samplePath(current.dataset,next.id)).then(async metadata=>{
+          if(!cancelled && request===navigation.current)await Promise.all(variants.map(v=>cache.current.load(metadata,v,true)));
+        }).catch(()=>undefined);
       }
-    }).catch(value=>{if(!cancelled)onError(value);});
+    }).catch(value=>{if(!cancelled)openingFailed(value,request);});
     return()=>{cancelled=true;};
-  },[sample?.dataset,sample?.id,sample?.image_version]);
+  },[sample?.dataset,sample?.id,sample?.image_version,imageNavigation]);
 
   async function beginEdit() {
     if(!sample)return;
@@ -260,12 +322,15 @@ export function App() {
       busy=true;
       try{
         await refreshModels();
-        setDatasets(await api<Dataset[]>("/datasets"));
+        if(cancelled)return;
+        const list=await api<Dataset[]>("/datasets");
+        if(cancelled)return;
+        setDatasets(list);
         setRefreshCount(c=>c+1);
-        const current=sampleRef.current;
+        const current=sampleRef.current,request=navigation.current;
         if(current){
           const latest=await api<Sample>(samplePath(current.dataset,current.id));
-          if(cancelled || sampleRef.current?.id!==current.id || sampleRef.current?.dataset!==current.dataset)return;
+          if(cancelled || request!==navigation.current || sampleRef.current?.id!==current.id || sampleRef.current?.dataset!==current.dataset)return;
           if(latest.revision!==current.revision || latest.image_version!==current.image_version){
             const q=queue.current;
             if(q && q.sequence!==q.acknowledged){
@@ -278,7 +343,7 @@ export function App() {
             }
           }else if(!leaseRef.current)setSample(latest);
         }
-      }catch(value){onError(value);}finally{busy=false;if(queuedSync){queuedSync=false;void sync();}}
+      }catch(value){if(!cancelled)onError(value);}finally{busy=false;if(queuedSync){queuedSync=false;void sync();}}
     }
     const stream=new EventSource("/api/v1/events");
     stream.onopen=()=>{setConnection("已连接");void sync();};
@@ -290,7 +355,7 @@ export function App() {
     return()=>{cancelled=true;stream.close();clearInterval(poll);};
   },[user,savedDraft]);
 
-  const editable=!!lease && leaseHealthy && !working && variants.every(v=>!!images[v]);
+  const editable=!!lease && leaseHealthy && !working && opening!=="loading" && variants.every(v=>!!images[v]);
   function change(next:Group,recordHistory=true) {
     if(!leaseRef.current || !leaseHealthy)return;
     if(performance.now()>=renewalDeadline.current){setLeaseHealthy(false);setError("编辑租约需重新确认，当前操作未应用");return;}
@@ -402,7 +467,7 @@ export function App() {
   return <div className="app">
     <header className="topbar"><div><span className="brand">Real-ISR</span><span className="subtle">远程标注工作台</span></div>
       <div><span className="connection">{connection}</span><span>{user.nickname} · {user.role==="owner"?"所有者":user.role==="edit"?"可编辑":"可查看"}</span>
-      <button title={user.role==="owner"?"退出并取消当前 IP 的免登录绑定":undefined} onClick={()=>void run(async()=>{await release();await api("/session","DELETE");setUser(null);setSample(null);cache.current.clear();})}>退出</button></div>
+      <button title={user.role==="owner"?"退出并取消当前 IP 的免登录绑定":undefined} onClick={()=>void run(async()=>{resetOpening();await release();await api("/session","DELETE");setUser(null);setSample(null);setGroup(emptyGroup());setSelected([]);setLocalRecovery(null);setDatasets([]);cache.current.clear();})}>退出</button></div>
     </header>
     {error && <div className="error-banner" role="alert"><span>{error}</span>
       <button onClick={()=>void run(async()=>{await queue.current?.flush();})}>重试保存</button>
@@ -422,7 +487,7 @@ export function App() {
     <div className="body">
       <aside className="navigation">
         <span className="eyebrow">数据集</span>
-        <select aria-label="数据集" value={dataset} disabled={working} onChange={e=>{const next=e.target.value;void run(async()=>{await release();setSample(null);setDataset(next);setPage(0);setSearch("");window.history.replaceState(null,"",location.pathname+"?dataset="+encodeURIComponent(next));});}}>
+        <select aria-label="数据集" value={dataset} disabled={working} onChange={e=>{const next=e.target.value;void run(async()=>{resetOpening();await release();setSample(null);setGroup(emptyGroup());setSelected([]);setLocalRecovery(null);setItems([]);setTotal(0);setDataset(next);setPage(0);setSearch("");window.history.replaceState(null,"",location.pathname+"?dataset="+encodeURIComponent(next));});}}>
           {datasets.map(d=><option key={d.id} value={d.id}>{d.attribute==="text"?"文本":"人脸"} · {d.id}</option>)}
         </select>
         <div className="progress"><strong>{currentDataset?.complete??0}</strong><span> / {currentDataset?.total??0} 组已完成</span></div>
@@ -431,13 +496,15 @@ export function App() {
         {currentDataset?.errors.map((e,i)=><small className="error-text" key={i}>{e.sample} {e.message}</small>)}
         {user.role==="owner" && <button disabled={working || currentDataset?.status==="scanning"} onClick={()=>void run(async()=>{await release();await api("/datasets/"+encodeURIComponent(dataset)+"/scan","POST");await refreshLists();})}>重新扫描数据集</button>}
         <input aria-label="搜索文件名" placeholder="搜索文件名…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
-        <div className="sample-list">{items.map(item=><button key={item.id} className={sample?.id===item.id?"selected":""} disabled={working} onClick={()=>void run(()=>openSample(item.id))}>
+        <div className="sample-list">{items.map(item=><button key={item.id} className={sample?.id===item.id?"selected":""} disabled={working} onClick={()=>void openSample(item.id)}>
           <span>{item.complete?"●":"○"}</span><span>{item.id}</span>
         </button>)}</div>
         <div className="button-row pagination"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(total/50))}</span><button disabled={(page+1)*50>=total} onClick={()=>setPage(p=>p+1)}>下一页</button></div>
       </aside>
       <main className="editor">
-        {!sample?<div className="empty-state"><h2>选择一组样本开始</h2><p>先查看图像，再申请编辑权。HR 标注会同步到三个 LR 视图。</p></div>:<>
+        {opening==="loading" && <p role="status">正在打开样本…</p>}
+        {opening==="failed" && <div role="alert" className="error-banner"><span>{openingError}</span><button disabled={working} onClick={()=>void openInitial()}>重试打开</button></div>}
+        {!sample?<div className="empty-state"><h2>{datasetStatus==="scanning"?"正在扫描数据集…":opening==="empty"?"暂无可用样本":opening==="loading"?"正在加载四视图…":"选择一组样本开始"}</h2><p>先查看图像，再申请编辑权。HR 标注会同步到三个 LR 视图。</p></div>:<>
           <div className="sample-toolbar">
             <div><strong>{sample.id}</strong><span className={"save-state "+status}>{lease?statusText[status]:savedDraft?"已保存草稿":"正式结果"}</span>
               {lease && !leaseHealthy && <span className="error-text">编辑已暂停</span>}
@@ -446,7 +513,7 @@ export function App() {
             <div className="button-row"><button disabled={working} onClick={()=>void run(()=>navigate(-1))}>上一组</button>
               <button disabled={working} onClick={()=>void run(()=>navigate(1))}>下一组</button>
               <button disabled={working} onClick={()=>void run(()=>navigate(1,true))}>下一未完成</button>
-              {user.role!=="view" && (!lease || !leaseHealthy)?<button className="primary" disabled={working || currentDataset?.status!=="ready"} onClick={()=>void run(beginEdit)}>开始编辑</button>:null}
+              {user.role!=="view" && (!lease || !leaseHealthy)?<button className="primary" disabled={working || opening==="loading" || currentDataset?.status!=="ready"} onClick={()=>void run(beginEdit)}>开始编辑</button>:null}
               {lease && <><button disabled={working} onClick={()=>void run(release)}>结束编辑</button><button className="primary" disabled={!editable} onClick={()=>void run(commit)}>确认整组</button></>}
             </div>
           </div>

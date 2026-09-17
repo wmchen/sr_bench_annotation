@@ -77,6 +77,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset}/opening-selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Opening Selection
+         * @description Resolve a readable opening target without acquiring a lease.
+         */
+        get: operations["opening_selection_api_v1_datasets__dataset__opening_selection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset}/samples": {
         parameters: {
             query?: never;
@@ -653,6 +673,18 @@ export interface components {
             expires: number;
         };
         /**
+         * OpeningSelectionView
+         * @description Authorized opening target and its index in the unfiltered list.
+         */
+        OpeningSelectionView: {
+            /** Sample */
+            sample: string | null;
+            /** Index */
+            index: number | null;
+            /** Pending Draft */
+            pending_draft: boolean;
+        };
+        /**
          * RegionView
          * @description Canonical region with lossless compatibility extension fields.
          */
@@ -962,6 +994,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    opening_selection_api_v1_datasets__dataset__opening_selection_get: {
+        parameters: {
+            query?: {
+                sample?: string | null;
+            };
+            header?: never;
+            path: {
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpeningSelectionView"];
                 };
             };
             /** @description Validation Error */

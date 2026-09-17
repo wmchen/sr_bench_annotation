@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Settings
+from ..domain.opening import has_pending_draft, opening_selection
 from ..domain.rules import DomainError, completion, edit_group
 from ..infrastructure.datasets.source import contained, scan_dataset
 from ..ports import Store
@@ -486,6 +487,68 @@ class AnnotationService:
                     }
                 )
             return output
+
+    def opening_selection(
+        self, session: str, dataset: str, sample: str | None = None
+    ) -> dict:
+        """Resolve an opening sample inside one authorized read snapshot."""
+        with self.store.read() as db:
+            user = self.auth(db, session, dataset, sample)
+            if not db.execute(
+                "SELECT 1 FROM datasets WHERE id=?", (dataset,)
+            ).fetchone():
+                raise DomainError("dataset", "数据集不存在", 404)
+            where, args = "dataset=?", [dataset]
+            if user["role"] != "owner" and user["sample"]:
+                where += " AND id=?"
+                args.append(user["sample"])
+            if sample is not None:
+                row = self.sample_row(db, dataset, sample)
+                # Rescans can retain online rows with the same position as a
+                # newly imported row. Enumerate the actual accessible order.
+                index = next(
+                    index
+                    for index, item in enumerate(
+                        db.execute(
+                            "SELECT id FROM samples WHERE "
+                            + where
+                            + " ORDER BY position",
+                            args,
+                        )
+                    )
+                    if item["id"] == sample
+                )
+                return {
+                    "sample": sample,
+                    "index": index,
+                    "pending_draft": has_pending_draft(
+                        json.loads(row["draft"]),
+                        (
+                            json.loads(row["formal"])
+                            if row["formal"] is not None
+                            else None
+                        ),
+                        row["revision"],
+                    ),
+                }
+            rows = db.execute(
+                "SELECT id,draft,formal,revision,complete FROM samples WHERE "
+                + where
+                + " ORDER BY position",
+                args,
+            )
+            return opening_selection(
+                {
+                    **dict(row),
+                    "draft": json.loads(row["draft"]),
+                    "formal": (
+                        json.loads(row["formal"])
+                        if row["formal"] is not None
+                        else None
+                    ),
+                }
+                for row in rows
+            )
 
     def list_samples(
         self, session: str, dataset: str, search: str, offset: int, limit: int
