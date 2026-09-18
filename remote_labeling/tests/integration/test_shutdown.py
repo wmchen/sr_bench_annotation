@@ -32,8 +32,13 @@ def test_shutdown_countdown_settings(settings: Settings) -> None:
 
 
 @pytest.mark.parametrize(
-    ("seconds", "stop_signal"),
-    [(None, signal.SIGINT), (30, signal.SIGINT), (0, signal.SIGTERM)],
+    ("seconds", "stop_signal", "repeat_interrupt"),
+    [
+        (None, signal.SIGINT, False),
+        (30, signal.SIGINT, False),
+        (0, signal.SIGTERM, False),
+        (None, signal.SIGINT, True),
+    ],
 )
 def test_cli_exits_with_open_browser_streams(
     settings: Settings,
@@ -41,6 +46,7 @@ def test_cli_exits_with_open_browser_streams(
     tmp_path: Path,
     seconds: int | None,
     stop_signal: signal.Signals,
+    repeat_interrupt: bool,
 ) -> None:
     """Broadcast then close all streams without waiting for client closure."""
     with socket.socket() as listener:
@@ -56,12 +62,28 @@ def test_cli_exits_with_open_browser_streams(
     config = tmp_path / "shutdown.yaml"
     config.write_text(yaml.safe_dump(values), encoding="utf-8")
     log = tmp_path / "server.log"
+    entrypoint = ["-m", "remote_labeling.backend.cli"]
+    if repeat_interrupt:
+        # Deliver a real second SIGINT during request draining, avoiding
+        # timing races between the test process and the server's main loop.
+        entrypoint = [
+            "-c",
+            "import asyncio, signal\n"
+            "from remote_labeling.backend.server import RemoteServer\n"
+            "from remote_labeling.backend.cli import main\n"
+            "original_shutdown = RemoteServer.shutdown\n"
+            "async def shutdown(self, sockets=None):\n"
+            "    asyncio.get_running_loop().call_soon(\n"
+            "        signal.raise_signal, signal.SIGINT)\n"
+            "    await original_shutdown(self, sockets=sockets)\n"
+            "RemoteServer.shutdown = shutdown\n"
+            "main()\n",
+        ]
     with log.open("w+") as output:
         process = subprocess.Popen(
             [
                 sys.executable,
-                "-m",
-                "remote_labeling.backend.cli",
+                *entrypoint,
                 "serve",
                 "--config",
                 str(config),
