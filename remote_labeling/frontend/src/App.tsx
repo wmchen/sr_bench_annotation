@@ -12,6 +12,8 @@ import { needsWriteback } from "./features/workspace/sourceSync";
 import { selectRegion, type RegionSelection } from "./features/workspace/selection";
 import { SaveQueue, type SaveStatus } from "./state/saveQueue";
 import { WorkspaceLayout } from "./features/layout/WorkspaceLayout";
+import { DisplaySettings } from "./features/workspace/DisplaySettings";
+import { readDisplayPreferences, writeDisplayPreferences } from "./features/workspace/displayPreferences";
 import { Workspace, type Mode } from "./features/workspace/Workspace";
 import { InferencePanel } from "./features/inference/InferencePanel";
 import { CurrentImageProgress } from "./features/statistics/CurrentImageProgress";
@@ -22,6 +24,8 @@ const emptyGroup = (): Group => ({HR:[],LR2:[],LR3:[],LR4:[]});
 const statusText = {saved:"草稿已自动保存",pending:"草稿待自动保存",saving:"草稿自动保存中…",failed:"草稿自动保存失败"};
 
 export function App() {
+  const [displayPreferences, setDisplayPreferences] = useState(readDisplayPreferences);
+  useEffect(() => writeDisplayPreferences(displayPreferences), [displayPreferences]);
   const [user,setUser] = useState<Session | null>(null);
   const [checking,setChecking] = useState(true);
   const [restoreFailed,setRestoreFailed] = useState(false);
@@ -584,6 +588,7 @@ export function App() {
         {user.role!=="view" && <InferencePanel slot={slot} jobs={jobs} editable={editable} attribute={sample?.attribute} selected={selected} empty={!group.HR.length}
           onRefresh={refreshModels} onInfer={infer} onError={onError}/>}
         {user.role==="owner" && <SharingPanel dataset={dataset} sample={sample?.id} refresh={refreshCount} onError={onError}/>}
+        <DisplaySettings value={displayPreferences} onChange={setDisplayPreferences}/>
       </aside>
     }>
       <main className="editor">
@@ -623,7 +628,7 @@ export function App() {
             {!lease && <label className="inline-label"><input type="checkbox" checked={savedDraft} onChange={e=>{setSavedDraft(e.target.checked);setGroup(e.target.checked?sample.draft:sample.formal??sample.draft);}}/>查看已保存草稿</label>}
           </div>
           {!sample.formal && !lease && <div className="draft-notice">尚无正式结果，当前展示已保存草稿。</div>}
-          <Workspace sample={sample} group={group} images={images} editable={editable} selected={selected} mode={mode} active={active} focus={focus}
+          <Workspace displayPreferences={displayPreferences} sample={sample} group={group} images={images} editable={editable} selected={selected} mode={mode} active={active} focus={focus}
             onSelect={setSelected} onActive={setActive} onChange={change}/>
           <footer className="editor-footer"><span>滚轮缩放 · 框外左键平移 · 空格 + 左键强制平移 · Ctrl/Cmd + 单击多选 · 列表 Shift + 单击范围选择 · 原始 PNG · 放大无平滑插值</span><span>{group.HR.length} 个区域 · {active}</span></footer>
         </>}

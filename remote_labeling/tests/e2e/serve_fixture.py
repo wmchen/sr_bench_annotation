@@ -22,7 +22,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="realisr-browser-") as directory:
         root = Path(directory)
         datasets = {}
-        for task in ("text", "face", "opening", "writeback", "sidebar"):
+        for task in ("text", "face", "opening", "writeback", "sidebar", "z-display"):
             source = root / task
             for variant, factor in (
                 ("HR", 1),

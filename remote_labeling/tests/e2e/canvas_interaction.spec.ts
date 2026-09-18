@@ -80,7 +80,7 @@ test("rectangle selection, edge resizing, live corners, view mode and forced pan
   // Resize the top edge, then inspect the new top-left handle BEFORE mouseup.
   await hover(page,canvas,cx,top,"ns-resize");
   await page.mouse.down(); await page.mouse.move(cx,top+20,{steps:5});
-  await expect.poll(async () => canvas.locator("canvas").last().evaluate((node, p) => {
+  await expect.poll(async () => canvas.locator("canvas").nth(1).evaluate((node, p) => {
     const c=node as HTMLCanvasElement, ratio=c.width/c.getBoundingClientRect().width;
     return Array.from(c.getContext("2d")!.getImageData(Math.round(p[0]*ratio),Math.round(p[1]*ratio),1,1).data);
   }, [left-box.x-2,top-box.y+18])).toEqual([255,255,255,255]);

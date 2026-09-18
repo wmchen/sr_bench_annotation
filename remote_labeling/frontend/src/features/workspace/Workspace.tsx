@@ -5,9 +5,12 @@ import type Konva from "konva";
 import { variants, type Group, type Point, type Region, type Sample, type Variant } from "../../api/client";
 import { corners, rectangle, syncHR, typing } from "../../state/domain";
 
+import { crosshairDash, regionStrokeWidth, type DisplayPreferences } from "./displayPreferences";
+
 export type Mode = "select" | "rectangle" | "quadrilateral";
 interface Viewport { cx: number; cy: number; zoom: number }
 interface Props {
+  displayPreferences: DisplayPreferences;
   sample: Sample; group: Group; images: Partial<Record<Variant, ImageBitmap>>;
   editable: boolean; selected: string[]; mode: Mode; active: Variant; focus: number;
   onSelect: (ids: string[], anchor?: string) => void; onActive: (v: Variant) => void;
@@ -102,6 +105,7 @@ function Pane(props: PaneProps) {
   const [size, setSize] = useState<Point>([400, 300]);
   const [drawing, setDrawing] = useState<Point[]>([]);
   const [cursor, setCursor] = useState<Point | null>(null);
+  const [screenPointer, setScreenPointer] = useState<Point | null>(null);
   const [hover, setHover] = useState<Hit | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const lastPointer = useRef<Point | null>(null);
@@ -127,12 +131,21 @@ function Pane(props: PaneProps) {
     cancel(); setHover(null);
   }, [props.mode, props.sample.id, props.sample.dataset, props.editable]);
   useEffect(() => {
+    lastPointer.current = null;
+    setScreenPointer(null);
+  }, [props.sample.id, props.sample.dataset, props.editable]);
+  useEffect(() => {
+    const blur = (): void => {
+      lastPointer.current = null;
+      setScreenPointer(null);
+      cancel();
+    };
     const escape = (event: KeyboardEvent): void => { if (event.key === "Escape" && !typing(event.target)) cancel(); };
     window.addEventListener("keydown", escape);
-    window.addEventListener("blur", cancel);
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", escape);
-      window.removeEventListener("blur", cancel);
+      window.removeEventListener("blur", blur);
     };
   }, []);
 
@@ -159,6 +172,7 @@ function Pane(props: PaneProps) {
     const bounds = holder.current!.getBoundingClientRect();
     const p: Point = [event.clientX - bounds.left, event.clientY - bounds.top];
     lastPointer.current = p[0] >= 0 && p[1] >= 0 && p[0] < bounds.width && p[1] < bounds.height ? p : null;
+    if (props.variant === "HR") setScreenPointer(lastPointer.current);
     return p;
   }
 
@@ -287,6 +301,13 @@ function Pane(props: PaneProps) {
     setHover(hit(p));
   }
 
+  const crosshairPoint = screenPointer && editable && drawingMode && !props.space && dragCursor !== "grabbing"
+    ? point(screenPointer) : null;
+  const crosshairX = crosshairPoint ? x + crosshairPoint[0] * scale : 0;
+  const crosshairY = crosshairPoint ? y + crosshairPoint[1] * scale : 0;
+  const previewCursor = screenPointer ? point(screenPointer) : cursor;
+  const appearance = props.displayPreferences;
+
   return <section className={"pane " + (props.active === props.variant ? "active" : "")} onPointerDown={() => props.onActive(props.variant)}>
     <header>
       <strong>{props.variant}</strong><span>{iw} × {ih} · {(scale*100).toFixed(0)}%</span>
@@ -296,9 +317,9 @@ function Pane(props: PaneProps) {
     </header>
     <div className="canvas-holder" ref={holder} data-testid={"canvas-" + props.variant} tabIndex={-1}
       style={{cursor:dragCursor ?? targetCursor(hover), touchAction:"none"}}
-      onPointerDown={down} onPointerMove={move} onPointerUp={up}
-      onPointerCancel={cancel} onLostPointerCapture={()=>{if (gesture.current) cancel();}}
-      onPointerLeave={()=>{lastPointer.current=null;setHover(null);}}>
+      onPointerEnter={event => { pointer(event); }} onPointerDown={down} onPointerMove={move} onPointerUp={up}
+      onPointerCancel={()=>{lastPointer.current=null;setScreenPointer(null);cancel();}} onLostPointerCapture={()=>{if (gesture.current) cancel();}}
+      onPointerLeave={()=>{lastPointer.current=null;setScreenPointer(null);setHover(null);}}>
       {!props.image && <div className="loading-image">加载原图…</div>}
       <Stage ref={stage} width={size[0]} height={size[1]}
         onWheel={e=>{
@@ -321,7 +342,7 @@ function Pane(props: PaneProps) {
             const color = region.recoverable == null ? "#abb5c8" : colors[region.recoverable];
             return <Line key={region.region_id}
               points={corners(region).flat()} closed stroke={selected ? "#ffffff" : color}
-              fill={selected ? "#ffffff18" : "#00000001"} strokeWidth={selected ? 2.5 : 1.5} strokeScaleEnabled={false}
+              fill={selected ? "#ffffff18" : "#00000001"} strokeWidth={regionStrokeWidth(appearance, selected)} strokeScaleEnabled={false}
               hitStrokeWidth={8/scale} listening={!drawingMode}
               name={"region-" + index} interaction={{region,kind:"region",index:0}}/>;
           })}
@@ -329,7 +350,7 @@ function Pane(props: PaneProps) {
             const points = corners(region);
             return [
               ...(region.shape_type === "rectangle" ? points.map((p,i)=><Line key={region.region_id+"-edge-"+i}
-                points={[...p,...points[(i+1)%4]]} stroke="#ffffff" strokeWidth={2.5} strokeScaleEnabled={false}
+                points={[...p,...points[(i+1)%4]]} stroke="#ffffff" strokeWidth={regionStrokeWidth(appearance, true)} strokeScaleEnabled={false}
                 hitStrokeWidth={10/scale} interaction={{region,kind:"edge",index:i}}/>) : []),
               ...points.map((p,i)=><Circle key={region.region_id+"-vertex-"+i}
                 x={p[0]} y={p[1]} radius={4.5/scale} stroke="#152238" strokeWidth={1/scale}
@@ -337,10 +358,18 @@ function Pane(props: PaneProps) {
             ];
           })}
           {drawing.length > 0 && <Line listening={false}
-            points={(props.mode === "rectangle" && cursor ? rectangle(drawing[0],cursor) : [...drawing,...(cursor?[cursor]:[])]).flat()}
-            stroke="#7eb6ff" closed={props.mode === "rectangle"} strokeWidth={2/scale} dash={[5/scale,4/scale]}/>
+            points={(props.mode === "rectangle" && previewCursor ? rectangle(drawing[0],previewCursor) : [...drawing,...(previewCursor?[previewCursor]:[])]).flat()}
+            stroke="#7eb6ff" closed={props.mode === "rectangle"} strokeWidth={appearance.regionWidth} strokeScaleEnabled={false} dash={[5/scale,4/scale]}/>
           }
         </Layer>
+        {props.variant === "HR" && <Layer listening={false}>
+          {crosshairPoint && <>
+            <Line points={[0, crosshairY, size[0], crosshairY]} stroke={appearance.crosshairColor}
+              strokeWidth={appearance.crosshairWidth} dash={crosshairDash(appearance.crosshairStyle, appearance.crosshairWidth)}/>
+            <Line points={[crosshairX, 0, crosshairX, size[1]]} stroke={appearance.crosshairColor}
+              strokeWidth={appearance.crosshairWidth} dash={crosshairDash(appearance.crosshairStyle, appearance.crosshairWidth)}/>
+          </>}
+        </Layer>}
       </Stage>
     </div>
   </section>;
